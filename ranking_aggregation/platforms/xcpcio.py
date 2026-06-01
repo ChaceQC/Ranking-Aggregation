@@ -104,7 +104,17 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def fetch_json(url: str, referer: str = "https://board.xcpcio.com/") -> Any:
+def json_error_excerpt(text: str, position: int, radius: int = 220) -> str:
+    start = max(0, position - radius)
+    end = min(len(text), position + radius)
+    return repr(text[start:end])
+
+
+def fetch_json(
+    url: str,
+    referer: str = "https://board.xcpcio.com/",
+    retries: int = 3,
+) -> Any:
     request = urllib.request.Request(
         url,
         headers={
@@ -118,17 +128,50 @@ def fetch_json(url: str, referer: str = "https://board.xcpcio.com/") -> Any:
             "Referer": referer,
         },
     )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            raw = response.read()
-            encoding = response.headers.get("content-encoding", "").lower()
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"HTTP {exc.code}: {detail}") from exc
+    last_error: Exception | None = None
+    attempts = max(int(retries), 1)
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                raw = response.read()
+                encoding = response.headers.get("content-encoding", "").lower()
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            if exc.code < 500 or attempt == attempts:
+                raise RuntimeError(f"HTTP {exc.code}: {detail}") from exc
+            last_error = exc
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            if attempt == attempts:
+                raise RuntimeError(f"请求 XCPCIO JSON 失败：url={url} error={exc}") from exc
+            last_error = exc
+        else:
+            try:
+                if encoding == "gzip" or raw.startswith(b"\x1f\x8b"):
+                    raw = gzip.decompress(raw)
+                text = raw.decode("utf-8")
+                return json.loads(text)
+            except (gzip.BadGzipFile, EOFError, OSError) as exc:
+                if attempt == attempts:
+                    raise RuntimeError(f"XCPCIO JSON 解压失败：url={url} error={exc}") from exc
+                last_error = exc
+            except UnicodeDecodeError as exc:
+                if attempt == attempts:
+                    raise RuntimeError(f"XCPCIO JSON 不是 UTF-8：url={url} error={exc}") from exc
+                last_error = exc
+            except json.JSONDecodeError as exc:
+                if attempt == attempts:
+                    excerpt = json_error_excerpt(text, exc.pos)
+                    raise RuntimeError(
+                        "XCPCIO JSON 解析失败："
+                        f"url={url} line={exc.lineno} column={exc.colno} "
+                        f"position={exc.pos} excerpt={excerpt}"
+                    ) from exc
+                last_error = exc
 
-    if encoding == "gzip" or raw.startswith(b"\x1f\x8b"):
-        raw = gzip.decompress(raw)
-    return json.loads(raw.decode("utf-8"))
+        if attempt < attempts:
+            time.sleep(0.5 * attempt)
+
+    raise RuntimeError(f"请求 XCPCIO JSON 失败：url={url} error={last_error}")
 
 
 def atomic_write_json(path: Path, payload: Any) -> None:
