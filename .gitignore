@@ -1,0 +1,26 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+
+# Local runtime configuration and credentials
+config.json
+cookies.txt
+
+# Generated ranking outputs
+rankings/
+nowcoder_running_contests.json
+xcpcio_running_contests.json
+
+# Local virtual environments and tooling caches
+.venv/
+venv/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
