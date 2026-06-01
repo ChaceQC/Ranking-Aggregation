@@ -53,6 +53,7 @@ def fetch_json(
     competition_id: str,
     cookie: str | None,
     referer: str | None = None,
+    retries: int = 3,
 ) -> dict[str, Any]:
     headers = {
         "User-Agent": (
@@ -68,18 +69,50 @@ def fetch_json(
         headers["Cookie"] = cookie
 
     request = urllib.request.Request(url, headers=headers)
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            raw = response.read()
-            encoding = response.headers.get("content-encoding", "").lower()
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"HTTP {exc.code}: {detail}") from exc
+    last_error: Exception | None = None
+    attempts = max(int(retries), 1)
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                raw = response.read()
+                encoding = response.headers.get("content-encoding", "").lower()
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            if exc.code < 500 or attempt == attempts:
+                raise RuntimeError(f"HTTP {exc.code}: {detail}") from exc
+            last_error = exc
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            if attempt == attempts:
+                raise RuntimeError(f"请求榜单 JSON 失败：url={url} error={exc}") from exc
+            last_error = exc
+        else:
+            try:
+                if encoding == "gzip" or raw.startswith(b"\x1f\x8b"):
+                    raw = gzip.decompress(raw)
+                text = raw.decode("utf-8")
+                return json.loads(text)
+            except (gzip.BadGzipFile, EOFError, OSError) as exc:
+                if attempt == attempts:
+                    raise RuntimeError(f"榜单 JSON 解压失败：url={url} error={exc}") from exc
+                last_error = exc
+            except UnicodeDecodeError as exc:
+                if attempt == attempts:
+                    raise RuntimeError(f"榜单 JSON 不是 UTF-8：url={url} error={exc}") from exc
+                last_error = exc
+            except json.JSONDecodeError as exc:
+                if attempt == attempts:
+                    start = max(0, exc.pos - 220)
+                    end = min(len(text), exc.pos + 220)
+                    raise RuntimeError(
+                        "榜单 JSON 解析失败："
+                        f"url={url} line={exc.lineno} column={exc.colno} "
+                        f"position={exc.pos} excerpt={text[start:end]!r}"
+                    ) from exc
+                last_error = exc
+        if attempt < attempts:
+            time.sleep(0.5 * attempt)
 
-    if encoding == "gzip" or raw.startswith(b"\x1f\x8b"):
-        raw = gzip.decompress(raw)
-
-    return json.loads(raw.decode("utf-8"))
+    raise RuntimeError(f"请求榜单 JSON 失败：url={url} error={last_error}")
 
 
 
@@ -240,6 +273,7 @@ def render_html(payload: dict[str, Any]) -> str:
     table {{
       width: max-content;
       min-width: 100%;
+      table-layout: fixed;
       border-collapse: separate;
       border-spacing: 0;
       font-size: 13px;
@@ -262,15 +296,34 @@ def render_html(payload: dict[str, Any]) -> str:
     }}
     tbody tr:nth-child(even) {{ background: #fafcff; }}
     tbody tr:hover {{ background: #eaf4ff; }}
-    tbody tr.pinned-row > td {{
+    tbody tr.virtual-spacer,
+    tbody tr.virtual-spacer:hover {{
+      background: transparent;
+    }}
+    tbody tr.virtual-spacer > td {{
+      height: var(--spacer-height, 0px);
+      padding: 0;
+      border: 0;
+      line-height: 0;
+    }}
+    tbody tr.virtual-spacer > td:first-child {{
+      position: static;
+    }}
+    tbody tr.pinned-copy > td {{
       position: sticky;
       top: var(--sticky-row-top, 34px);
       z-index: 6;
       background: #fff7ed;
       box-shadow: inset 0 -1px 0 var(--line);
     }}
-    tbody tr.pinned-row > td:first-child {{ z-index: 9; }}
-    tbody tr.pinned-row:hover > td {{ background: #ffedd5; }}
+    tbody tr.pinned-copy > td:first-child {{ z-index: 9; }}
+    tbody tr.pinned-copy:hover > td {{ background: #ffedd5; }}
+    tbody tr.pinned-original > td {{
+      background: #fffaf0;
+    }}
+    tbody tr.pinned-original:hover > td {{
+      background: #ffedd5;
+    }}
     th:first-child, td:first-child {{
       position: sticky;
       left: 0;
@@ -427,9 +480,11 @@ def render_html(payload: dict[str, Any]) -> str:
   <main>
     <div class="table-wrap">
       <table>
+        <colgroup id="tableColumns"></colgroup>
         <thead>
           <tr id="tableHeader"></tr>
         </thead>
+        <tbody id="pinnedBody"></tbody>
         <tbody id="tableBody"></tbody>
       </table>
     </div>
@@ -449,10 +504,25 @@ def render_html(payload: dict[str, Any]) -> str:
       var contestClockNode = document.getElementById("contestClock");
       var teamCountNode = document.getElementById("teamCount");
       var titleNode = document.querySelector("h1");
+      var tableColumns = document.getElementById("tableColumns");
       var tableHeader = document.getElementById("tableHeader");
-      var tbody = document.querySelector("tbody");
+      var tableWrap = document.querySelector(".table-wrap");
+      var pinnedBody = document.getElementById("pinnedBody");
+      var tbody = document.getElementById("tableBody");
       var memberPopover = document.getElementById("memberPopover");
-      var rows = [];
+      var allRows = [];
+      var problemEntries = [];
+      var tableColumnCount = 7;
+      var rowHeight = 35;
+      var currentScoreMode = false;
+      var renderStart = -1;
+      var renderEnd = -1;
+      var pendingRenderFrame = null;
+      var pendingFilterFrame = null;
+      var pendingFilterTimer = null;
+      var pinnedRowKeys = new Set();
+      var pinnedItems = [];
+      var changedTeamIds = new Set();
       var currentPayload = JSON.parse(document.getElementById("initialPayload").textContent);
       var refreshSeconds = Math.max(
         1,
@@ -466,6 +536,11 @@ def render_html(payload: dict[str, Any]) -> str:
       var refreshInFlight = false;
       var refreshAbortController = null;
       var refreshTimeoutId = null;
+      var contestIndex = {{
+        contests: (currentPayload.config && currentPayload.config.contests) || [],
+        default_contest_id: (currentPayload.config && currentPayload.config.current_contest_id) || ""
+      }};
+      var contestIndexRequest = null;
 
       function escapeHtml(value) {{
         return String(value == null ? "" : value)
@@ -585,11 +660,16 @@ def render_html(payload: dict[str, Any]) -> str:
       }}
 
       function getContestOptions() {{
-        return (currentPayload.config && currentPayload.config.contests) || [];
+        return contestIndex.contests || (currentPayload.config && currentPayload.config.contests) || [];
       }}
 
       function getCurrentContestId() {{
-        return (currentPayload.config && currentPayload.config.current_contest_id) || "";
+        var options = getContestOptions();
+        var payloadContestId = (currentPayload.config && currentPayload.config.current_contest_id) || "";
+        if (options.some(function (item) {{ return item.id === payloadContestId; }})) {{
+          return payloadContestId;
+        }}
+        return contestIndex.default_contest_id || payloadContestId || "";
       }}
 
       function currentContestJson() {{
@@ -615,11 +695,56 @@ def render_html(payload: dict[str, Any]) -> str:
         contestSelect.value = getCurrentContestId();
       }}
 
-      function renderTable(payload, changedTeamIds) {{
-        var problemInfo = payload.problem_info || {{}};
-        var problemEntries = sortedProblems(problemInfo);
-        var changed = changedTeamIds || new Set();
-        var scoreMode = Boolean(payload.score_mode || (payload.competition || {{}}).scoreMode);
+      function mergeContestIndex(indexPayload) {{
+        if (!indexPayload || !Array.isArray(indexPayload.contests)) {{
+          return;
+        }}
+        contestIndex = {{
+          contests: indexPayload.contests,
+          default_contest_id: indexPayload.default_contest_id || contestIndex.default_contest_id || ""
+        }};
+        renderContestSelect();
+      }}
+
+      function refreshContestIndex() {{
+        if (!window.fetch || location.protocol === "file:") {{
+          return Promise.resolve();
+        }}
+        if (contestIndexRequest) {{
+          return contestIndexRequest;
+        }}
+        contestIndexRequest = fetch("contests.json?ts=" + Date.now(), {{ cache: "no-store" }})
+          .then(function (response) {{
+            if (!response.ok) {{
+              throw new Error("HTTP " + response.status);
+            }}
+            return response.json();
+          }})
+          .then(mergeContestIndex)
+          .catch(function () {{}})
+          .finally(function () {{
+            contestIndexRequest = null;
+          }});
+        return contestIndexRequest;
+      }}
+
+      function rowKey(row) {{
+        return String(row.team_fid || row.team_no || row.display_no || "");
+      }}
+
+      function prepareRows(payload) {{
+        return (payload.rows || []).map(function (row, index) {{
+          var key = rowKey(row);
+          return {{
+            key: key,
+            row: row,
+            index: index,
+            searchText: normalize((row.school_name || "") + " " + (row.team_name || ""))
+          }};
+        }});
+      }}
+
+      function renderTableHeader(scoreMode) {{
         var baseLabels = scoreMode
           ? ["序号", "排名", "学校", "队名", "总分", "满分题", "用时"]
           : ["序号", "排名", "学校", "队名", "过题数", "总用时", "罚时"];
@@ -637,68 +762,227 @@ def render_html(payload: dict[str, Any]) -> str:
             + (scoreMode ? fullScore : ' / ' + escapeHtml(info.submitCount || 0)) + '</span>'
             + '</span>' }};
         }});
+        tableColumnCount = baseHeaders.length + problemHeaders.length;
         tableHeader.innerHTML = baseHeaders.concat(problemHeaders).map(function (header) {{
           return "<th>" + header.html + "</th>";
         }}).join("");
+      }}
 
-        tbody.innerHTML = (payload.rows || []).map(function (row) {{
-          var problemCells = problemEntries.map(function (entry) {{
-            var label = entry[1] && entry[1].label || entry[0];
-            var cell = (row.problem_cells || {{}})[label] || {{}};
-            var submits = Number(cell.submit_count || 0);
-            var classes = ["problem-cell"];
-            var scoreCell = Boolean(cell.score_mode || scoreMode);
-            var cellStyle = "--submits:" + submits;
-            if (cell.sealed) {{
-              classes.push("sealed");
-            }} else if (scoreCell && cell.submitted) {{
-              var score = Number(cell.score || 0);
-              var ratio = Number(cell.score_ratio || 0);
-              if (score > 0) {{
-                classes.push(cell.accepted ? "accepted" : "score-positive");
-                cellStyle += ";--score-alpha:" + (0.24 + Math.max(0, Math.min(1, ratio)) * 0.5).toFixed(3);
-              }} else {{
-                classes.push("rejected");
-              }}
-            }} else if (cell.accepted) {{
-              classes.push("accepted");
-            }} else if (submits > 0) {{
-              classes.push("rejected");
-            }} else {{
-              classes.push("empty");
-            }}
-            if (cell.first_accept) {{
-              classes.push("first-accept");
-            }}
-            return '<td class="' + classes.join(" ") + '" style="' + cellStyle + '">'
-              + escapeHtml(cell.text || row[label] || "")
-              + '</td>';
-          }}).join("");
-          var rowKey = row.team_fid || row.team_no || row.display_no;
-          var rowClasses = changed.has(String(rowKey)) ? ' class="changed-row"' : '';
-          return '<tr' + rowClasses + ' data-team-fid="' + escapeHtml(rowKey)
-            + '" data-school="' + escapeHtml(row.school_name) + '" data-team="' + escapeHtml(row.team_name) + '">'
-            + '<td class="number">' + escapeHtml(row.display_no) + '</td>'
-            + '<td class="rank">' + escapeHtml(row.display_rank || row.rank) + '</td>'
-            + '<td class="school-name">' + escapeHtml(row.school_name) + '</td>'
-            + '<td class="team-name"><span class="team-name-text" data-members="'
-            + escapeHtml(row.members) + '">' + escapeHtml(row.team_name) + '</span></td>'
-            + '<td class="solved">' + escapeHtml(scoreMode ? (row.total_score || "") : row.solved_count) + '</td>'
-            + '<td class="time">' + escapeHtml(scoreMode ? row.solved_count : row.solving_time) + '</td>'
-            + '<td class="time">' + escapeHtml(scoreMode ? row.solving_time : row.penalty_time) + '</td>'
-            + problemCells
-            + '</tr>';
-        }}).join("");
-        rows = Array.prototype.slice.call(tbody.querySelectorAll("tr"));
-        bindMemberPopovers();
-        applyFilter();
-        rows.forEach(function (row) {{
-          if (row.classList.contains("changed-row")) {{
-            window.setTimeout(function () {{
-              row.classList.remove("changed-row");
-            }}, 3400);
-          }}
+      function textWidth(value, minWidth, maxWidth) {{
+        var text = String(value == null ? "" : value);
+        var wideCount = 0;
+        for (var index = 0; index < text.length; index += 1) {{
+          wideCount += text.charCodeAt(index) > 255 ? 1 : 0;
+        }}
+        var asciiCount = text.length - wideCount;
+        var width = Math.ceil(asciiCount * 7 + wideCount * 13 + 24);
+        return Math.max(minWidth, Math.min(maxWidth, width));
+      }}
+
+      function maxTextWidth(values, minWidth, maxWidth) {{
+        return values.reduce(function (width, value) {{
+          return Math.max(width, textWidth(value, minWidth, maxWidth));
+        }}, minWidth);
+      }}
+
+      function rowProblemText(row, entry) {{
+        var label = entry[1] && entry[1].label || entry[0];
+        var cell = (row.problem_cells || {{}})[label] || {{}};
+        return cell.text || row[label] || "";
+      }}
+
+      function computeColumnWidths() {{
+        var rows = allRows.map(function (item) {{ return item.row; }});
+        var widths = [
+          maxTextWidth(["序号"].concat(rows.map(function (row) {{ return row.display_no; }})), 54, 90),
+          maxTextWidth(["排名"].concat(rows.map(function (row) {{ return row.display_rank || row.rank; }})), 58, 110),
+          maxTextWidth(["学校"].concat(rows.map(function (row) {{ return row.school_name; }})), 96, 260),
+          maxTextWidth(["队名"].concat(rows.map(function (row) {{ return row.team_name; }})), 128, 340),
+          maxTextWidth(
+            [currentScoreMode ? "总分" : "过题数"].concat(rows.map(function (row) {{
+              return currentScoreMode ? (row.total_score || "") : row.solved_count;
+            }})),
+            70,
+            140
+          ),
+          maxTextWidth(
+            [currentScoreMode ? "满分题" : "总用时"].concat(rows.map(function (row) {{
+              return currentScoreMode ? row.solved_count : row.solving_time;
+            }})),
+            76,
+            150
+          ),
+          maxTextWidth(
+            ["用时"].concat(rows.map(function (row) {{
+              return currentScoreMode ? row.solving_time : row.penalty_time;
+            }})),
+            70,
+            150
+          )
+        ];
+        problemEntries.forEach(function (entry) {{
+          var info = entry[1] || {{}};
+          var label = info.label || entry[0];
+          var headerText = label + " " + (info.acceptCount || 0) + " / "
+            + (currentScoreMode ? (info.fullScore || "") : (info.submitCount || 0));
+          widths.push(maxTextWidth(
+            [headerText].concat(rows.map(function (row) {{ return rowProblemText(row, entry); }})),
+            58,
+            150
+          ));
         }});
+        return widths;
+      }}
+
+      function applyColumnWidths() {{
+        tableColumns.innerHTML = computeColumnWidths().map(function (width) {{
+          return '<col style="width:' + width + 'px">';
+        }}).join("");
+      }}
+
+      function renderProblemCells(row, scoreMode) {{
+        return problemEntries.map(function (entry) {{
+          var label = entry[1] && entry[1].label || entry[0];
+          var cell = (row.problem_cells || {{}})[label] || {{}};
+          var submits = Number(cell.submit_count || 0);
+          var classes = ["problem-cell"];
+          var scoreCell = Boolean(cell.score_mode || scoreMode);
+          var cellStyle = "--submits:" + submits;
+          if (cell.sealed) {{
+            classes.push("sealed");
+          }} else if (scoreCell && cell.submitted) {{
+            var score = Number(cell.score || 0);
+            var ratio = Number(cell.score_ratio || 0);
+            if (score > 0) {{
+              classes.push(cell.accepted ? "accepted" : "score-positive");
+              cellStyle += ";--score-alpha:" + (0.24 + Math.max(0, Math.min(1, ratio)) * 0.5).toFixed(3);
+            }} else {{
+              classes.push("rejected");
+            }}
+          }} else if (cell.accepted) {{
+            classes.push("accepted");
+          }} else if (submits > 0) {{
+            classes.push("rejected");
+          }} else {{
+            classes.push("empty");
+          }}
+          if (cell.first_accept) {{
+            classes.push("first-accept");
+          }}
+          return '<td class="' + classes.join(" ") + '" style="' + cellStyle + '">'
+            + escapeHtml(cell.text || row[label] || "")
+            + '</td>';
+        }}).join("");
+      }}
+
+      function renderRow(item, extraClass) {{
+        var row = item.row;
+        var classes = [];
+        if (extraClass) {{
+          classes.push(extraClass);
+        }}
+        if (pinnedRowKeys.has(item.key) && extraClass !== "pinned-copy") {{
+          classes.push("pinned-original");
+        }}
+        if (changedTeamIds.has(item.key)) {{
+          classes.push("changed-row");
+        }}
+        var classAttribute = classes.length ? ' class="' + classes.join(" ") + '"' : "";
+        return '<tr' + classAttribute + ' data-team-fid="' + escapeHtml(item.key)
+          + '" data-school="' + escapeHtml(row.school_name) + '" data-team="' + escapeHtml(row.team_name) + '">'
+          + '<td class="number">' + escapeHtml(row.display_no) + '</td>'
+          + '<td class="rank">' + escapeHtml(row.display_rank || row.rank) + '</td>'
+          + '<td class="school-name">' + escapeHtml(row.school_name) + '</td>'
+          + '<td class="team-name"><span class="team-name-text" data-members="'
+          + escapeHtml(row.members) + '">' + escapeHtml(row.team_name) + '</span></td>'
+          + '<td class="solved">' + escapeHtml(currentScoreMode ? (row.total_score || "") : row.solved_count) + '</td>'
+          + '<td class="time">' + escapeHtml(currentScoreMode ? row.solved_count : row.solving_time) + '</td>'
+          + '<td class="time">' + escapeHtml(currentScoreMode ? row.solving_time : row.penalty_time) + '</td>'
+          + renderProblemCells(row, currentScoreMode)
+          + '</tr>';
+      }}
+
+      function spacerRow(height) {{
+        return '<tr class="virtual-spacer"><td colspan="' + tableColumnCount
+          + '" style="--spacer-height:' + Math.max(0, Math.round(height)) + 'px"></td></tr>';
+      }}
+
+      function estimateRowHeight() {{
+        var probe = tbody.querySelector("tr:not(.virtual-spacer)") || pinnedBody.querySelector("tr");
+        if (!probe) {{
+          return;
+        }}
+        var measured = probe.getBoundingClientRect().height;
+        if (measured > 0) {{
+          rowHeight = Math.max(28, measured);
+        }}
+      }}
+
+      function renderPinnedRows() {{
+        var headerHeight = tableHeader.getBoundingClientRect().height || rowHeight;
+        pinnedBody.innerHTML = pinnedItems.map(function (item, index) {{
+          return renderRow(item, "pinned-copy").replace(
+            "<tr",
+            '<tr style="--sticky-row-top:' + (headerHeight + index * rowHeight) + 'px"'
+          );
+        }}).join("");
+      }}
+
+      function renderVisibleRows(force) {{
+        if (!allRows.length) {{
+          tbody.innerHTML = "";
+          renderStart = 0;
+          renderEnd = 0;
+          return;
+        }}
+        var viewportHeight = tableWrap.clientHeight || window.innerHeight;
+        var scrollTop = tableWrap.scrollTop || 0;
+        var bufferRows = 18;
+        var start = Math.max(0, Math.floor(scrollTop / rowHeight) - bufferRows);
+        var visibleCount = Math.ceil(viewportHeight / rowHeight) + bufferRows * 2;
+        var end = Math.min(allRows.length, start + visibleCount);
+        if (!force && start === renderStart && end === renderEnd) {{
+          return;
+        }}
+        renderStart = start;
+        renderEnd = end;
+        var html = spacerRow(start * rowHeight);
+        for (var index = start; index < end; index += 1) {{
+          html += renderRow(allRows[index], "");
+        }}
+        html += spacerRow((allRows.length - end) * rowHeight);
+        tbody.innerHTML = html;
+        estimateRowHeight();
+      }}
+
+      function scheduleVisibleRows(force) {{
+        if (pendingRenderFrame) {{
+          window.cancelAnimationFrame(pendingRenderFrame);
+        }}
+        pendingRenderFrame = window.requestAnimationFrame(function () {{
+          pendingRenderFrame = null;
+          renderVisibleRows(Boolean(force));
+        }});
+      }}
+
+      function renderTable(payload, changed) {{
+        problemEntries = sortedProblems(payload.problem_info || {{}});
+        currentScoreMode = Boolean(payload.score_mode || (payload.competition || {{}}).scoreMode);
+        changedTeamIds = changed || new Set();
+        allRows = prepareRows(payload);
+        rowHeight = 35;
+        renderStart = -1;
+        renderEnd = -1;
+        pinnedItems = [];
+        pinnedRowKeys = new Set();
+        renderTableHeader(currentScoreMode);
+        applyColumnWidths();
+        applyFilter();
+        window.setTimeout(function () {{
+          changedTeamIds = new Set();
+          renderPinnedRows();
+          renderVisibleRows(true);
+        }}, 3400);
       }}
 
       function renderPayload(payload) {{
@@ -728,68 +1012,68 @@ def render_html(payload: dict[str, Any]) -> str:
 
       function applyFilter() {{
         var keywords = parseKeywords(filterInput.value);
+        if (!keywords.length) {{
+          pinnedItems = [];
+          pinnedRowKeys = new Set();
+          renderPinnedRows();
+          renderVisibleRows(true);
+          filterStatus.textContent = "置顶 0 / " + allRows.length + " 支队伍";
+          try {{
+            localStorage.setItem(filterKey, filterInput.value);
+          }} catch (error) {{}}
+          return;
+        }}
         var pinnedGroups = keywords.map(function () {{ return []; }});
-        var unpinned = [];
-        rows.forEach(function (row) {{
-          var target = normalize((row.dataset.school || "") + " " + (row.dataset.team || ""));
+        allRows.forEach(function (item) {{
           var matchIndex = -1;
           for (var index = 0; index < keywords.length; index += 1) {{
-            if (target.indexOf(keywords[index]) !== -1) {{
+            if (item.searchText.indexOf(keywords[index]) !== -1) {{
               matchIndex = index;
               break;
             }}
           }}
-          row.classList.toggle("pinned-row", matchIndex !== -1);
           if (matchIndex !== -1) {{
-            pinnedGroups[matchIndex].push(row);
-          }} else {{
-            unpinned.push(row);
+            pinnedGroups[matchIndex].push(item);
           }}
         }});
-        var pinned = [].concat.apply([], pinnedGroups);
-        pinned.concat(unpinned).forEach(function (row) {{
-          tbody.appendChild(row);
-        }});
-        updateStickyRows(pinned);
-        filterStatus.textContent = "置顶 " + pinned.length + " / " + rows.length
+        pinnedItems = [].concat.apply([], pinnedGroups);
+        pinnedRowKeys = new Set(pinnedItems.map(function (item) {{
+          return item.key;
+        }}));
+        renderPinnedRows();
+        renderVisibleRows(true);
+        filterStatus.textContent = "置顶 " + pinnedItems.length + " / " + allRows.length
           + " 支队伍" + (keywords.length ? "，关键词 " + keywords.length + " 个" : "");
         try {{
           localStorage.setItem(filterKey, filterInput.value);
         }} catch (error) {{}}
       }}
 
-      function updateStickyRows(pinnedRows) {{
-        var headerHeight = tableHeader.getBoundingClientRect().height || 34;
-        pinnedRows.forEach(function (row, index) {{
-          var rowHeight = row.getBoundingClientRect().height || 34;
-          row.style.setProperty("--sticky-row-top", (headerHeight + index * rowHeight) + "px");
-        }});
-        rows.forEach(function (row) {{
-          if (!row.classList.contains("pinned-row")) {{
-            row.style.removeProperty("--sticky-row-top");
+      function scheduleFilter() {{
+        if (pendingFilterTimer) {{
+          window.clearTimeout(pendingFilterTimer);
+        }}
+        pendingFilterTimer = window.setTimeout(function () {{
+          pendingFilterTimer = null;
+          if (pendingFilterFrame) {{
+            window.cancelAnimationFrame(pendingFilterFrame);
           }}
-        }});
+          pendingFilterFrame = window.requestAnimationFrame(function () {{
+            pendingFilterFrame = null;
+            applyFilter();
+          }});
+        }}, 80);
       }}
 
-      function bindMemberPopovers() {{
-        Array.prototype.slice.call(document.querySelectorAll(".team-name-text")).forEach(function (node) {{
-          node.addEventListener("mouseenter", function () {{
-            var members = node.dataset.members || "无队员信息";
-            memberPopover.innerHTML = '<div class="member-popover-title">'
-              + escapeHtml(node.textContent || "队伍")
-              + '</div><div class="member-popover-members">'
-              + escapeHtml(members).replace(/ \\/ /g, "<br>")
-              + '</div>';
-            memberPopover.hidden = false;
-            positionMemberPopover(node);
-          }});
-          node.addEventListener("mousemove", function () {{
-            positionMemberPopover(node);
-          }});
-          node.addEventListener("mouseleave", function () {{
-            memberPopover.hidden = true;
-          }});
-        }});
+      function showMemberPopover(node) {{
+        var members = node.dataset.members || "无队员信息";
+        memberPopover.innerHTML = '<div class="member-popover-title">'
+          + escapeHtml(node.textContent || "队伍")
+          + '</div><div class="member-popover-members">'
+          + escapeHtml(members).replace(/ \\/ /g, "<br>")
+          + '</div>';
+        memberPopover.hidden = false;
+        positionMemberPopover(node);
       }}
 
       function positionMemberPopover(anchor) {{
@@ -818,7 +1102,34 @@ def render_html(payload: dict[str, Any]) -> str:
         autoRefresh.checked = localStorage.getItem(autoKey) !== "0";
       }} catch (error) {{}}
 
-      filterInput.addEventListener("input", applyFilter);
+      tableWrap.addEventListener("scroll", function () {{
+        scheduleVisibleRows(false);
+      }});
+      tableWrap.addEventListener("mouseover", function (event) {{
+        var node = event.target && event.target.closest
+          ? event.target.closest(".team-name-text")
+          : null;
+        if (node && tableWrap.contains(node)) {{
+          showMemberPopover(node);
+        }}
+      }});
+      tableWrap.addEventListener("mousemove", function (event) {{
+        var node = event.target && event.target.closest
+          ? event.target.closest(".team-name-text")
+          : null;
+        if (node && tableWrap.contains(node)) {{
+          positionMemberPopover(node);
+        }}
+      }});
+      tableWrap.addEventListener("mouseout", function (event) {{
+        var node = event.target && event.target.closest
+          ? event.target.closest(".team-name-text")
+          : null;
+        if (node && tableWrap.contains(node)) {{
+          memberPopover.hidden = true;
+        }}
+      }});
+      filterInput.addEventListener("input", scheduleFilter);
       clearButton.addEventListener("click", function () {{
         filterInput.value = "";
         applyFilter();
@@ -872,10 +1183,13 @@ def render_html(payload: dict[str, Any]) -> str:
           }}
         }}, Math.max(15000, refreshSeconds * 1000));
         updateRefreshStatus();
-        fetch((jsonFile || currentContestJson()) + "?ts=" + Date.now(), {{
-          cache: "no-store",
-          signal: refreshAbortController ? refreshAbortController.signal : undefined
-        }})
+        refreshContestIndex()
+          .then(function () {{
+            return fetch((jsonFile || currentContestJson()) + "?ts=" + Date.now(), {{
+              cache: "no-store",
+              signal: refreshAbortController ? refreshAbortController.signal : undefined
+            }});
+          }})
           .then(function (response) {{
             if (!response.ok) {{
               throw new Error("HTTP " + response.status);
@@ -901,17 +1215,18 @@ def render_html(payload: dict[str, Any]) -> str:
           }});
       }}
 
-      applyFilter();
       renderPayload(currentPayload);
-      try {{
-        var savedContestId = localStorage.getItem(contestKey);
-        var savedContest = getContestOptions().find(function (item) {{
-          return item.id === savedContestId;
-        }});
-        if (savedContest && savedContest.id !== getCurrentContestId()) {{
-          refreshData(savedContest.json);
-        }}
-      }} catch (error) {{}}
+      refreshContestIndex().then(function () {{
+        try {{
+          var savedContestId = localStorage.getItem(contestKey);
+          var savedContest = getContestOptions().find(function (item) {{
+            return item.id === savedContestId;
+          }});
+          if (savedContest && savedContest.id !== getCurrentContestId()) {{
+            refreshData(savedContest.json);
+          }}
+        }} catch (error) {{}}
+      }});
       updateRefreshStatus();
       window.setInterval(function () {{
         updateTimeDisplays();
@@ -1010,6 +1325,17 @@ def atomic_write_text(path: Path, content: str, encoding: str) -> None:
     temp_path.replace(path)
 
 
+def atomic_write_bytes(path: Path, content: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_suffix(path.suffix + ".tmp")
+    temp_path.write_bytes(content)
+    temp_path.replace(path)
+
+
+def gzip_path(path: Path) -> Path:
+    return path.with_name(f"{path.name}.gz")
+
+
 def write_outputs(
     payload: dict[str, Any],
     paths: OutputPaths,
@@ -1018,10 +1344,12 @@ def write_outputs(
     problem_info = payload["problem_info"]
     rows = payload["rows"]
 
-    json_content = json.dumps(payload, ensure_ascii=False, indent=2)
+    json_content = json_payload_content(payload)
     atomic_write_text(paths.latest_json, json_content, encoding="utf-8")
+    atomic_write_bytes(gzip_path(paths.latest_json), gzip_content(json_content))
     if paths.snapshot_json:
         atomic_write_text(paths.snapshot_json, json_content, encoding="utf-8")
+        atomic_write_bytes(gzip_path(paths.snapshot_json), gzip_content(json_content))
 
     if include_html:
         html_content = render_html(payload)
@@ -1041,6 +1369,20 @@ def write_outputs(
     atomic_write_text(paths.latest_csv, csv_content, encoding="utf-8-sig")
     if paths.snapshot_csv:
         atomic_write_text(paths.snapshot_csv, csv_content, encoding="utf-8-sig")
+
+
+def json_payload_content(payload: dict[str, Any]) -> str:
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
+
+def gzip_content(content: str) -> bytes:
+    return gzip.compress(content.encode("utf-8"), compresslevel=9)
+
+
+def write_json_payload(path: Path, payload: dict[str, Any]) -> None:
+    json_content = json_payload_content(payload)
+    atomic_write_text(path, json_content, encoding="utf-8")
+    atomic_write_bytes(gzip_path(path), gzip_content(json_content))
 
 
 def output_paths(output_dir: Path, timestamp: str, keep_history: bool) -> OutputPaths:
