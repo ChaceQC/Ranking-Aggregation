@@ -4,6 +4,7 @@ import argparse
 import html
 import json
 import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -65,7 +66,13 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def fetch_text(url: str) -> str:
+def json_error_excerpt(text: str, position: int, radius: int = 220) -> str:
+    start = max(0, position - radius)
+    end = min(len(text), position + radius)
+    return repr(text[start:end])
+
+
+def fetch_text(url: str, retries: int = 3) -> str:
     request = urllib.request.Request(
         url,
         headers={
@@ -79,15 +86,27 @@ def fetch_text(url: str) -> str:
             "Referer": "https://ac.nowcoder.com/",
         },
     )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            return response.read().decode("utf-8", errors="replace")
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"HTTP {exc.code}: {detail}") from exc
+    last_error: Exception | None = None
+    attempts = max(int(retries), 1)
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                return response.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            if exc.code < 500 or attempt == attempts:
+                raise RuntimeError(f"HTTP {exc.code}: {detail}") from exc
+            last_error = exc
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            if attempt == attempts:
+                raise RuntimeError(f"请求牛客页面失败：url={url} error={exc}") from exc
+            last_error = exc
+        if attempt < attempts:
+            time.sleep(0.5 * attempt)
+    raise RuntimeError(f"请求牛客页面失败：url={url} error={last_error}")
 
 
-def fetch_json(url: str, referer: str) -> dict[str, Any]:
+def fetch_json(url: str, referer: str, retries: int = 3) -> dict[str, Any]:
     request = urllib.request.Request(
         url,
         headers={
@@ -101,12 +120,33 @@ def fetch_json(url: str, referer: str) -> dict[str, Any]:
             "Referer": referer,
         },
     )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            return json.loads(response.read().decode("utf-8", errors="replace"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"HTTP {exc.code}: {detail}") from exc
+    last_error: Exception | None = None
+    attempts = max(int(retries), 1)
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                text = response.read().decode("utf-8", errors="replace")
+            return json.loads(text)
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            if exc.code < 500 or attempt == attempts:
+                raise RuntimeError(f"HTTP {exc.code}: {detail}") from exc
+            last_error = exc
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            if attempt == attempts:
+                raise RuntimeError(f"请求牛客 JSON 失败：url={url} error={exc}") from exc
+            last_error = exc
+        except json.JSONDecodeError as exc:
+            if attempt == attempts:
+                raise RuntimeError(
+                    "牛客 JSON 解析失败："
+                    f"url={url} line={exc.lineno} column={exc.colno} "
+                    f"position={exc.pos} excerpt={json_error_excerpt(text, exc.pos)}"
+                ) from exc
+            last_error = exc
+        if attempt < attempts:
+            time.sleep(0.5 * attempt)
+    raise RuntimeError(f"请求牛客 JSON 失败：url={url} error={last_error}")
 
 
 def strip_tags(value: str) -> str:
