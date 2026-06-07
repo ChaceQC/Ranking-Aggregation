@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import functools
 import http.server
+import json
 import socketserver
 import sys
 import threading
@@ -688,7 +689,61 @@ def run_update_loop(
 
 
 class GzipStaticHandler(http.server.SimpleHTTPRequestHandler):
+    page_files = {"latest.html"}
+    contest_index_file = "contests.json"
+
+    def output_root(self) -> Path:
+        return Path(self.directory).resolve()
+
+    def requested_relative_path(self) -> str | None:
+        try:
+            target_path = Path(self.translate_path(self.path)).resolve()
+            relative_path = target_path.relative_to(self.output_root())
+        except (OSError, ValueError):
+            return None
+        if len(relative_path.parts) != 1:
+            return None
+        return relative_path.as_posix()
+
+    def allowed_json_files(self) -> set[str]:
+        allowed = {self.contest_index_file}
+        index_path = self.output_root() / self.contest_index_file
+        try:
+            payload = json.loads(index_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return allowed
+        contests = payload.get("contests") if isinstance(payload, dict) else None
+        if not isinstance(contests, list):
+            return allowed
+        for contest in contests:
+            if not isinstance(contest, dict):
+                continue
+            json_file = contest.get("json")
+            if not isinstance(json_file, str):
+                continue
+            json_path = Path(json_file)
+            if (
+                json_path.name == json_file
+                and json_file.endswith(".json")
+                and json_file != self.contest_index_file
+            ):
+                allowed.add(json_file)
+        return allowed
+
+    def is_allowed_request(self) -> bool:
+        relative_path = self.requested_relative_path()
+        if relative_path is None:
+            return False
+        if relative_path in self.page_files:
+            return True
+        if relative_path.endswith(".json"):
+            return relative_path in self.allowed_json_files()
+        return False
+
     def send_head(self) -> Any:
+        if not self.is_allowed_request():
+            self.send_error(404, "File not found")
+            return None
         if self.path.split("?", 1)[0].endswith(".json"):
             accept_encoding = self.headers.get("Accept-Encoding", "")
             if "gzip" in accept_encoding.lower():
@@ -705,6 +760,11 @@ class GzipStaticHandler(http.server.SimpleHTTPRequestHandler):
                     self.end_headers()
                     return file_handle
         return super().send_head()
+
+
+class ReusableThreadingTCPServer(socketserver.ThreadingTCPServer):
+    allow_reuse_address = True
+    daemon_threads = True
 
 
 def serve_output(args: argparse.Namespace, cookie: str | None) -> int:
@@ -733,8 +793,7 @@ def serve_output(args: argparse.Namespace, cookie: str | None) -> int:
     worker.start()
 
     handler = functools.partial(GzipStaticHandler, directory=str(output_dir))
-    with socketserver.ThreadingTCPServer((args.host, args.port), handler) as server:
-        server.daemon_threads = True
+    with ReusableThreadingTCPServer((args.host, args.port), handler) as server:
         url = f"http://{args.host}:{args.port}/latest.html"
         print(f"本地网页：{url}", flush=True)
         print("按 Ctrl+C 停止服务。", flush=True)
