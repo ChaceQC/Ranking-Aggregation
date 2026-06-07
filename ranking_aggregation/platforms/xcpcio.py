@@ -22,6 +22,7 @@ ENDED_CONTEST_KEEP_HOURS = 48
 ACCEPTED_STATUSES = {"ACCEPTED", "CORRECT", "OK", "YES"}
 PENDING_STATUSES = {"PENDING", "JUDGING", "COMPILING", "SUBMITTED"}
 IGNORED_STATUSES = {"IGNORED", "SKIPPED"}
+FROZEN_STATUSES = {"FROZEN"}
 UNOFFICIAL_GROUPS = {"unofficial", "star", "stars"}
 
 
@@ -172,6 +173,15 @@ def fetch_json(
             time.sleep(0.5 * attempt)
 
     raise RuntimeError(f"请求 XCPCIO JSON 失败：url={url} error={last_error}")
+
+
+def fetch_optional_json(url: str, default: Any) -> Any:
+    try:
+        return fetch_json(url)
+    except RuntimeError as exc:
+        if str(exc).startswith("HTTP 404:"):
+            return default
+        raise
 
 
 def atomic_write_json(path: Path, payload: Any) -> None:
@@ -483,10 +493,11 @@ def load_contest_data(
     teams = fetch_json(urllib.parse.urljoin(base_url, "team.json"))
     runs = fetch_json(urllib.parse.urljoin(base_url, "run.json"))
     organizations_ref = config.get("organizations") if isinstance(config, dict) else None
-    organizations_url = "organizations.json"
     if isinstance(organizations_ref, dict) and organizations_ref.get("url"):
         organizations_url = str(organizations_ref["url"])
-    organizations = fetch_json(urllib.parse.urljoin(base_url, organizations_url))
+        organizations = fetch_json(urllib.parse.urljoin(base_url, organizations_url))
+    else:
+        organizations = fetch_optional_json(urllib.parse.urljoin(base_url, "organizations.json"), [])
     return config, teams, runs, organizations
 
 
@@ -669,6 +680,10 @@ def build_team_states(
         if status in IGNORED_STATUSES:
             continue
 
+        if status in FROZEN_STATUSES:
+            cell.sealed_submit_count += 1
+            continue
+
         if public_cutoff_ms is not None and timestamp > public_cutoff_ms:
             cell.sealed_submit_count += 1
             continue
@@ -778,6 +793,10 @@ def build_rows(
     for display_no, team_state in enumerate(team_states, start=1):
         team = team_state.team
         team_id = str(team.get("id") or "")
+        organization_id = str(team.get("organization_id") or "")
+        school_name = organization_names.get(organization_id) or i18n_text(
+            team.get("organization") or team.get("organization_name") or team.get("school")
+        )
         row = {
             "fetched_at": fetched_at,
             "display_no": display_no,
@@ -786,7 +805,7 @@ def build_rows(
             "school_rank": "",
             "team_no": team.get("location") or team_id,
             "team_fid": team_id,
-            "school_name": organization_names.get(str(team.get("organization_id") or ""), ""),
+            "school_name": school_name,
             "team_name": i18n_text(team.get("name")),
             "members": member_names(team),
             "solved_count": team_state.solved_count,
