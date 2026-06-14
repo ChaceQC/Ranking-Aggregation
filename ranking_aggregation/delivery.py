@@ -821,6 +821,15 @@ def render_html(payload: dict[str, Any]) -> str:
       function applyTeamTypeFilter(resetScroll) {{
         allRows = sourceRows.filter(function (item) {{
           return rowMatchesTeamType(item.row);
+        }}).map(function (item, index) {{
+          return {{
+            key: item.key,
+            row: item.row,
+            index: index,
+            sourceIndex: item.index,
+            searchText: item.searchText,
+            displayNo: index + 1
+          }};
         }});
         if (resetScroll) {{
           tableWrap.scrollTop = 0;
@@ -883,7 +892,7 @@ def render_html(payload: dict[str, Any]) -> str:
       function computeColumnWidths() {{
         var rows = allRows.map(function (item) {{ return item.row; }});
         var widths = [
-          maxTextWidth(["序号"].concat(rows.map(function (row) {{ return row.display_no; }})), 54, 90),
+          maxTextWidth(["序号"].concat(allRows.map(function (item) {{ return item.displayNo; }})), 54, 90),
           maxTextWidth(["排名"].concat(rows.map(function (row) {{ return row.display_rank || row.rank; }})), 58, 110),
           maxTextWidth(["学校"].concat(rows.map(function (row) {{ return row.school_name; }})), 96, null),
           maxTextWidth(["队名"].concat(rows.map(function (row) {{ return row.team_name; }})), 128, null),
@@ -979,7 +988,7 @@ def render_html(payload: dict[str, Any]) -> str:
         var classAttribute = classes.length ? ' class="' + classes.join(" ") + '"' : "";
         return '<tr' + classAttribute + ' data-team-fid="' + escapeHtml(item.key)
           + '" data-school="' + escapeHtml(row.school_name) + '" data-team="' + escapeHtml(row.team_name) + '">'
-          + '<td class="number">' + escapeHtml(row.display_no) + '</td>'
+          + '<td class="number">' + escapeHtml(item.displayNo == null ? row.display_no : item.displayNo) + '</td>'
           + '<td class="rank">' + escapeHtml(row.display_rank || row.rank) + '</td>'
           + '<td class="school-name">' + escapeHtml(row.school_name) + '</td>'
           + '<td class="team-name"><span class="team-name-text" data-members="'

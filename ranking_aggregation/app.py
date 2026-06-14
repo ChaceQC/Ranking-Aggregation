@@ -691,6 +691,20 @@ def run_update_loop(
 class GzipStaticHandler(http.server.SimpleHTTPRequestHandler):
     page_files = {"latest.html"}
     contest_index_file = "contests.json"
+    trusted_proxy_addresses = {"127.0.0.1", "::1"}
+
+    def address_string(self) -> str:
+        fallback_ip = self.client_address[0]
+        if fallback_ip not in self.trusted_proxy_addresses:
+            return fallback_ip
+
+        for header_name in ("X-Real-IP", "X-Forwarded-For"):
+            header_value = self.headers.get(header_name, "")
+            for forwarded_ip in header_value.split(","):
+                forwarded_ip = forwarded_ip.strip()
+                if forwarded_ip:
+                    return forwarded_ip
+        return fallback_ip
 
     def output_root(self) -> Path:
         return Path(self.directory).resolve()
