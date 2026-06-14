@@ -237,10 +237,9 @@ def render_html(payload: dict[str, Any]) -> str:
       cursor: pointer;
     }}
     .toolbar button:hover {{ border-color: var(--accent); }}
+    .team-type-select,
     .contest-select {{
-      margin-left: auto;
       height: 32px;
-      max-width: min(440px, 100%);
       padding: 4px 28px 4px 8px;
       border: 1px solid var(--line);
       border-radius: 4px;
@@ -248,6 +247,14 @@ def render_html(payload: dict[str, Any]) -> str:
       color: var(--text);
       font: inherit;
     }}
+    .team-type-select {{
+      min-width: 118px;
+    }}
+    .contest-select {{
+      margin-left: auto;
+      max-width: min(440px, 100%);
+    }}
+    .team-type-select:focus,
     .contest-select:focus {{
       border-color: var(--accent);
       outline: none;
@@ -333,6 +340,8 @@ def render_html(payload: dict[str, Any]) -> str:
     th:first-child {{ z-index: 12; background: #eef3f9; }}
     .school-name, .team-name {{
       text-align: left;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }}
     .rank {{
       color: var(--rank);
@@ -342,6 +351,11 @@ def render_html(payload: dict[str, Any]) -> str:
       font-weight: 700;
     }}
     .team-name-text {{
+      display: inline-block;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      vertical-align: bottom;
       border-bottom: 1px dotted rgba(15, 106, 191, 0.45);
       cursor: help;
     }}
@@ -468,6 +482,11 @@ def render_html(payload: dict[str, Any]) -> str:
     <div class="toolbar">
       <input id="rankFilter" class="search-box" type="search" placeholder="输入多个学校或队名置顶，用空格/逗号分隔" autocomplete="off">
       <button id="clearFilter" type="button">清空</button>
+      <select id="teamTypeFilter" class="team-type-select" aria-label="筛选队伍类型" hidden>
+        <option value="all">全部队伍</option>
+        <option value="official">正式队</option>
+        <option value="unofficial">非正式队</option>
+      </select>
       <button id="refreshNow" type="button">刷新</button>
       <select id="contestSelect" class="contest-select" aria-label="选择榜单"></select>
       <label class="auto-refresh">
@@ -495,6 +514,7 @@ def render_html(payload: dict[str, Any]) -> str:
     (function () {{
       var filterInput = document.getElementById("rankFilter");
       var clearButton = document.getElementById("clearFilter");
+      var teamTypeFilter = document.getElementById("teamTypeFilter");
       var refreshNow = document.getElementById("refreshNow");
       var contestSelect = document.getElementById("contestSelect");
       var autoRefresh = document.getElementById("autoRefresh");
@@ -510,6 +530,7 @@ def render_html(payload: dict[str, Any]) -> str:
       var pinnedBody = document.getElementById("pinnedBody");
       var tbody = document.getElementById("tableBody");
       var memberPopover = document.getElementById("memberPopover");
+      var sourceRows = [];
       var allRows = [];
       var problemEntries = [];
       var tableColumnCount = 7;
@@ -530,6 +551,7 @@ def render_html(payload: dict[str, Any]) -> str:
       );
       var previousRowSignatures = null;
       var filterKey = "pintia-ranking-filter:" + location.pathname;
+      var teamTypeKey = "pintia-ranking-team-type:" + location.pathname;
       var autoKey = "pintia-ranking-auto-refresh:" + location.pathname;
       var contestKey = "pintia-ranking-contest:" + location.pathname;
       var secondsLeft = refreshSeconds;
@@ -744,6 +766,72 @@ def render_html(payload: dict[str, Any]) -> str:
         }});
       }}
 
+      function currentContestOption() {{
+        var contestId = getCurrentContestId();
+        return getContestOptions().find(function (item) {{
+          return item.id === contestId;
+        }});
+      }}
+
+      function isTeamTypeFilterSupported(payload) {{
+        var source = normalize((payload && payload.source) || "");
+        if (!source) {{
+          var selected = currentContestOption();
+          source = normalize((selected && selected.source) || "");
+        }}
+        return source === "pintia" || source === "xcpcio" || source === "board";
+      }}
+
+      function updateTeamTypeFilterVisibility(payload) {{
+        var supported = isTeamTypeFilterSupported(payload);
+        teamTypeFilter.hidden = !supported;
+        teamTypeFilter.disabled = !supported;
+      }}
+
+      function isUnofficialRow(row) {{
+        var excluded = row && row.excluded;
+        if (typeof excluded === "string") {{
+          var value = normalize(excluded);
+          return value === "true" || value === "1" || value === "yes";
+        }}
+        return Boolean(excluded);
+      }}
+
+      function rowMatchesTeamType(row) {{
+        if (!isTeamTypeFilterSupported(currentPayload)) {{
+          return true;
+        }}
+        if (teamTypeFilter.value === "official") {{
+          return !isUnofficialRow(row);
+        }}
+        if (teamTypeFilter.value === "unofficial") {{
+          return isUnofficialRow(row);
+        }}
+        return true;
+      }}
+
+      function updateTeamCount() {{
+        if (allRows.length === sourceRows.length) {{
+          teamCountNode.textContent = "队伍数：" + sourceRows.length;
+          return;
+        }}
+        teamCountNode.textContent = "队伍数：" + allRows.length + " / " + sourceRows.length;
+      }}
+
+      function applyTeamTypeFilter(resetScroll) {{
+        allRows = sourceRows.filter(function (item) {{
+          return rowMatchesTeamType(item.row);
+        }});
+        if (resetScroll) {{
+          tableWrap.scrollTop = 0;
+        }}
+        renderStart = -1;
+        renderEnd = -1;
+        updateTeamCount();
+        applyColumnWidths();
+        applyFilter();
+      }}
+
       function renderTableHeader(scoreMode) {{
         var baseLabels = scoreMode
           ? ["序号", "排名", "学校", "队名", "总分", "满分题", "用时"]
@@ -776,7 +864,8 @@ def render_html(payload: dict[str, Any]) -> str:
         }}
         var asciiCount = text.length - wideCount;
         var width = Math.ceil(asciiCount * 7 + wideCount * 13 + 24);
-        return Math.max(minWidth, Math.min(maxWidth, width));
+        width = Math.max(minWidth, width);
+        return maxWidth == null ? width : Math.min(maxWidth, width);
       }}
 
       function maxTextWidth(values, minWidth, maxWidth) {{
@@ -796,8 +885,8 @@ def render_html(payload: dict[str, Any]) -> str:
         var widths = [
           maxTextWidth(["序号"].concat(rows.map(function (row) {{ return row.display_no; }})), 54, 90),
           maxTextWidth(["排名"].concat(rows.map(function (row) {{ return row.display_rank || row.rank; }})), 58, 110),
-          maxTextWidth(["学校"].concat(rows.map(function (row) {{ return row.school_name; }})), 96, 260),
-          maxTextWidth(["队名"].concat(rows.map(function (row) {{ return row.team_name; }})), 128, 340),
+          maxTextWidth(["学校"].concat(rows.map(function (row) {{ return row.school_name; }})), 96, null),
+          maxTextWidth(["队名"].concat(rows.map(function (row) {{ return row.team_name; }})), 128, null),
           maxTextWidth(
             [currentScoreMode ? "总分" : "过题数"].concat(rows.map(function (row) {{
               return currentScoreMode ? (row.total_score || "") : row.solved_count;
@@ -969,15 +1058,16 @@ def render_html(payload: dict[str, Any]) -> str:
         problemEntries = sortedProblems(payload.problem_info || {{}});
         currentScoreMode = Boolean(payload.score_mode || (payload.competition || {{}}).scoreMode);
         changedTeamIds = changed || new Set();
-        allRows = prepareRows(payload);
+        sourceRows = prepareRows(payload);
+        allRows = sourceRows.slice();
         rowHeight = 35;
         renderStart = -1;
         renderEnd = -1;
         pinnedItems = [];
         pinnedRowKeys = new Set();
+        updateTeamTypeFilterVisibility(payload);
         renderTableHeader(currentScoreMode);
-        applyColumnWidths();
-        applyFilter();
+        applyTeamTypeFilter(false);
         window.setTimeout(function () {{
           changedTeamIds = new Set();
           renderPinnedRows();
@@ -1099,6 +1189,10 @@ def render_html(payload: dict[str, Any]) -> str:
 
       try {{
         filterInput.value = localStorage.getItem(filterKey) || "";
+        teamTypeFilter.value = localStorage.getItem(teamTypeKey) || "all";
+        if (!teamTypeFilter.value) {{
+          teamTypeFilter.value = "all";
+        }}
         autoRefresh.checked = localStorage.getItem(autoKey) !== "0";
       }} catch (error) {{}}
 
@@ -1130,6 +1224,12 @@ def render_html(payload: dict[str, Any]) -> str:
         }}
       }});
       filterInput.addEventListener("input", scheduleFilter);
+      teamTypeFilter.addEventListener("change", function () {{
+        try {{
+          localStorage.setItem(teamTypeKey, teamTypeFilter.value || "all");
+        }} catch (error) {{}}
+        applyTeamTypeFilter(true);
+      }});
       clearButton.addEventListener("click", function () {{
         filterInput.value = "";
         applyFilter();
