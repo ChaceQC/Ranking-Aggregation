@@ -148,14 +148,8 @@ def script_json(payload: dict[str, Any]) -> str:
 
 
 def render_html(payload: dict[str, Any]) -> str:
-    competition = payload["competition"]
-    problem_info = payload["problem_info"]
-    rows = payload["rows"]
-    refresh_interval = payload.get("config", {}).get(
-        "refresh_interval_seconds",
-        DEFAULT_RUNNING_INTERVAL_SECONDS,
-    )
-    title = competition.get("name") or "Pintia 榜单"
+    title = "榜单"
+    initial_payload: dict[str, Any] = {}
 
     return f"""<!doctype html>
 <html lang="zh-CN">
@@ -474,10 +468,10 @@ def render_html(payload: dict[str, Any]) -> str:
   <header>
     <h1>{html_escape(title)}</h1>
     <div class="meta">
-      <span id="updateTime">更新时间：{html_escape(payload["fetched_at"])}</span>
+      <span id="updateTime">更新时间：加载中</span>
       <span id="contestClock">比赛用时：--:--:--</span>
-      <span id="teamCount">队伍数：{len(rows)}</span>
-      <span id="refreshStatus">{html_escape(refresh_interval)} 秒后自动刷新</span>
+      <span id="teamCount">队伍数：--</span>
+      <span id="refreshStatus">正在加载…</span>
     </div>
     <div class="toolbar">
       <input id="rankFilter" class="search-box" type="search" placeholder="输入多个学校或队名置顶，用空格/逗号分隔" autocomplete="off">
@@ -493,7 +487,7 @@ def render_html(payload: dict[str, Any]) -> str:
         <input id="autoRefresh" type="checkbox" checked>
         自动刷新
       </label>
-      <span id="filterStatus" class="toolbar-status">置顶 0 / {len(rows)} 支队伍</span>
+      <span id="filterStatus" class="toolbar-status">置顶 0 / 0 支队伍</span>
     </div>
   </header>
   <main>
@@ -509,7 +503,7 @@ def render_html(payload: dict[str, Any]) -> str:
     </div>
   </main>
   <div id="memberPopover" class="member-popover" hidden></div>
-  <script id="initialPayload" type="application/json">{script_json(payload)}</script>
+  <script id="initialPayload" type="application/json">{script_json(initial_payload)}</script>
   <script>
     (function () {{
       var filterInput = document.getElementById("rankFilter");
@@ -637,8 +631,9 @@ def render_html(payload: dict[str, Any]) -> str:
       }}
 
       function updateTimeDisplays() {{
+        var relativeTime = formatRelativeTime(currentPayload.fetched_at);
         updateTimeNode.textContent = "更新时间：" + formatDateTime(currentPayload.fetched_at)
-          + "（" + formatRelativeTime(currentPayload.fetched_at) + "）";
+          + (relativeTime ? "（" + relativeTime + "）" : "");
 
         var competition = currentPayload.competition || {{}};
         var startAt = new Date(competition.startAt || "");
@@ -682,7 +677,10 @@ def render_html(payload: dict[str, Any]) -> str:
       }}
 
       function getContestOptions() {{
-        return contestIndex.contests || (currentPayload.config && currentPayload.config.contests) || [];
+        if (contestIndex.contests && contestIndex.contests.length) {{
+          return contestIndex.contests;
+        }}
+        return (currentPayload.config && currentPayload.config.contests) || [];
       }}
 
       function getCurrentContestId() {{
@@ -1101,7 +1099,7 @@ def render_html(payload: dict[str, Any]) -> str:
           Number((currentPayload.config || {{}}).refresh_interval_seconds || {DEFAULT_RUNNING_INTERVAL_SECONDS})
         );
         var competition = payload.competition || {{}};
-        titleNode.textContent = competition.name || "Pintia 榜单";
+        titleNode.textContent = competition.name || "榜单";
         document.title = titleNode.textContent + " - 榜单";
         renderContestSelect();
         updateTimeDisplays();
@@ -1269,20 +1267,20 @@ def render_html(payload: dict[str, Any]) -> str:
           localStorage.setItem(contestKey, selectedId);
         }} catch (error) {{}}
         previousRowSignatures = null;
-        refreshData(selected.json);
+        refreshData(selected.json, true);
       }});
 
-      function refreshData(jsonFile) {{
+      function refreshData(jsonFile, skipContestIndex) {{
         if (refreshInFlight) {{
           updateRefreshStatus();
-          return;
+          return Promise.resolve();
         }}
         try {{
           localStorage.setItem(filterKey, filterInput.value);
         }} catch (error) {{}}
         if (!window.fetch || location.protocol === "file:") {{
-          location.reload();
-          return;
+          refreshStatus.textContent = "请通过 HTTP 服务访问榜单";
+          return Promise.resolve();
         }}
         refreshInFlight = true;
         refreshAbortController = window.AbortController ? new AbortController() : null;
@@ -1292,7 +1290,8 @@ def render_html(payload: dict[str, Any]) -> str:
           }}
         }}, Math.max(15000, refreshSeconds * 1000));
         updateRefreshStatus();
-        refreshContestIndex()
+        var indexPromise = skipContestIndex ? Promise.resolve() : refreshContestIndex();
+        return indexPromise
           .then(function () {{
             return fetch((jsonFile || currentContestJson()) + "?ts=" + Date.now(), {{
               cache: "no-store",
@@ -1312,6 +1311,7 @@ def render_html(payload: dict[str, Any]) -> str:
           }})
           .catch(function () {{
             secondsLeft = Math.min(5, refreshSeconds);
+            refreshStatus.textContent = "更新失败，稍后重试";
           }})
           .finally(function () {{
             refreshInFlight = false;
@@ -1324,19 +1324,30 @@ def render_html(payload: dict[str, Any]) -> str:
           }});
       }}
 
-      renderPayload(currentPayload);
-      refreshContestIndex().then(function () {{
-        try {{
-          var savedContestId = localStorage.getItem(contestKey);
-          var savedContest = getContestOptions().find(function (item) {{
-            return item.id === savedContestId;
-          }});
-          if (savedContest && savedContest.id !== getCurrentContestId()) {{
-            refreshData(savedContest.json);
-          }}
-        }} catch (error) {{}}
-      }});
-      updateRefreshStatus();
+      function loadInitialData() {{
+        if (!window.fetch || location.protocol === "file:") {{
+          refreshStatus.textContent = "请通过 HTTP 服务访问榜单";
+          return;
+        }}
+        refreshStatus.textContent = "正在加载…";
+        refreshContestIndex().then(function () {{
+          var jsonFile = "";
+          try {{
+            var savedContestId = localStorage.getItem(contestKey);
+            var savedContest = getContestOptions().find(function (item) {{
+              return item.id === savedContestId;
+            }});
+            if (savedContest) {{
+              contestSelect.value = savedContest.id;
+              jsonFile = savedContest.json;
+            }}
+          }} catch (error) {{}}
+          previousRowSignatures = null;
+          return refreshData(jsonFile || currentContestJson(), true);
+        }});
+      }}
+
+      loadInitialData();
       window.setInterval(function () {{
         updateTimeDisplays();
         if (!autoRefresh.checked) {{
@@ -1478,6 +1489,10 @@ def write_outputs(
     atomic_write_text(paths.latest_csv, csv_content, encoding="utf-8-sig")
     if paths.snapshot_csv:
         atomic_write_text(paths.snapshot_csv, csv_content, encoding="utf-8-sig")
+
+
+def write_html_output(payload: dict[str, Any], path: Path) -> None:
+    atomic_write_text(path, render_html(payload), encoding="utf-8")
 
 
 def json_payload_content(payload: dict[str, Any]) -> str:

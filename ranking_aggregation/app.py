@@ -19,6 +19,7 @@ from .delivery import (
     fetch_json,
     output_paths,
     output_paths_for_contest,
+    write_html_output,
     write_json_payload,
     write_outputs,
 )
@@ -26,7 +27,6 @@ from .rankings import as_count, normalize_nowcoder_rankings, normalize_pintia_ra
 from .settings import (
     configure_stdio,
     contest_options,
-    contest_start_sort_value,
     is_explicit_single_contest,
     load_contest_configs,
     load_cookie,
@@ -34,6 +34,7 @@ from .settings import (
     parse_args,
     resolve_ended_interval,
     resolve_running_interval,
+    sorted_contests,
 )
 
 
@@ -180,12 +181,8 @@ def contest_index_payload(
 
 
 def primary_contest_from(contests: list[dict[str, Any]]) -> dict[str, Any] | None:
-    if not contests:
-        return None
-    return max(
-        contests,
-        key=lambda item: (contest_start_sort_value(item), str(item.get("id", ""))),
-    )
+    ordered = sorted_contests(contests)
+    return ordered[0] if ordered else None
 
 
 def payload_is_running(payload: dict[str, Any], now: datetime | None = None) -> bool:
@@ -545,8 +542,8 @@ class RankingUpdateService:
             None,
         )
         if primary_entry is None and payloads:
-            primary_entry = payloads[0]
-        if primary_entry is not None:
+            write_html_output(payloads[0][1], legacy_paths.latest_html)
+        elif primary_entry is not None:
             _, primary_payload = primary_entry
             write_outputs(primary_payload, legacy_paths, include_html=True)
         return legacy_paths.latest_html, total_rows, intervals

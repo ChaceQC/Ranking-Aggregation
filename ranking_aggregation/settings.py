@@ -399,7 +399,18 @@ def parse_datetime_value(value: Any) -> datetime | None:
 
 def contest_start_sort_value(contest: dict[str, Any]) -> float:
     start_at = parse_datetime_value(contest.get("start_at") or contest.get("startAt"))
-    return start_at.timestamp() if start_at is not None else float("-inf")
+    if start_at is not None:
+        return start_at.timestamp()
+    end_at = parse_datetime_value(contest.get("end_at") or contest.get("endAt"))
+    return end_at.timestamp() if end_at is not None else float("-inf")
+
+
+def sorted_contests(contests: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        contests,
+        key=lambda item: (contest_start_sort_value(item), str(item.get("id", ""))),
+        reverse=True,
+    )
 
 
 def contest_options(contests: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -414,9 +425,5 @@ def contest_options(contests: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "json": contest_json_name(contest),
             "start_at": contest.get("start_at") or "",
         }
-        for contest in sorted(
-            contests,
-            key=lambda item: (contest_start_sort_value(item), str(item.get("id", ""))),
-            reverse=True,
-        )
+        for contest in sorted_contests(contests)
     ]
