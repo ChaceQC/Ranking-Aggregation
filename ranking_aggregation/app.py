@@ -8,6 +8,7 @@ import socketserver
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -36,6 +37,9 @@ from .settings import (
     resolve_running_interval,
     sorted_contests,
 )
+
+
+NOWCODER_PAGE_FETCH_WORKERS = 8
 
 
 class RankingSource(Protocol):
@@ -270,13 +274,18 @@ def fetch_nowcoder_pages(
 
     basic_info = ((first_page.get("data") or {}).get("basicInfo") or {})
     page_count = max(1, as_count(basic_info.get("pageCount")) or 1)
-    pages = [first_page]
-    for page in range(2, page_count + 1):
-        print(
-            f"[{datetime.now().astimezone().isoformat(timespec='seconds')}] "
-            f"获取牛客排名：contest={competition_id} page={page}/{page_count}",
-            flush=True,
-        )
+    if page_count <= 1:
+        return [first_page]
+
+    worker_count = min(NOWCODER_PAGE_FETCH_WORKERS, page_count - 1)
+    print(
+        f"[{datetime.now().astimezone().isoformat(timespec='seconds')}] "
+        f"并发获取牛客排名：contest={competition_id} pages=2-{page_count} "
+        f"workers={worker_count}",
+        flush=True,
+    )
+
+    def fetch_page(page: int) -> tuple[int, dict[str, Any]]:
         payload = fetch_json(
             build_nowcoder_rankings_url(competition_id, page),
             competition_id,
@@ -285,8 +294,22 @@ def fetch_nowcoder_pages(
         )
         if payload.get("code") not in (0, None):
             raise RuntimeError(f"Nowcoder 第 {page} 页接口错误：{payload.get('msg') or payload}")
-        pages.append(payload)
-    return pages
+        return page, payload
+
+    pages_by_number: dict[int, dict[str, Any]] = {}
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        futures = {
+            executor.submit(fetch_page, page): page
+            for page in range(2, page_count + 1)
+        }
+        for future in as_completed(futures):
+            page, payload = future.result()
+            pages_by_number[page] = payload
+
+    return [first_page] + [
+        pages_by_number[page]
+        for page in range(2, page_count + 1)
+    ]
 
 
 def fetch_contest_payload(
