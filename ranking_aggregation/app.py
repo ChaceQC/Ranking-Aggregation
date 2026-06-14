@@ -185,6 +185,48 @@ def primary_contest_from(contests: list[dict[str, Any]]) -> dict[str, Any] | Non
     return ordered[0] if ordered else None
 
 
+def apply_payload_metadata_to_contest(
+    contest: dict[str, Any],
+    payload: dict[str, Any],
+    overwrite: bool = True,
+) -> None:
+    competition = payload.get("competition") or {}
+    display_name = (
+        competition.get("name")
+        or contest.get("display_name")
+        or contest.get("name")
+        or f'{contest["source"]} {contest["competition_id"]}'
+    )
+    if overwrite or not contest.get("display_name"):
+        contest["display_name"] = display_name
+    start_at = competition.get("startAt") or competition.get("start_at")
+    end_at = competition.get("endAt") or competition.get("end_at")
+    if start_at and (overwrite or not contest.get("start_at")):
+        contest["start_at"] = start_at
+    if end_at and (overwrite or not contest.get("end_at")):
+        contest["end_at"] = end_at
+
+
+def enrich_contests_from_outputs(
+    contests: list[dict[str, Any]],
+    output_dir: Path,
+) -> list[dict[str, Any]]:
+    enriched = [dict(contest) for contest in contests]
+    for contest in enriched:
+        json_path = output_paths_for_contest(
+            output_dir,
+            "",
+            False,
+            contest,
+        ).latest_json
+        try:
+            payload = json.loads(json_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        apply_payload_metadata_to_contest(contest, payload, overwrite=False)
+    return enriched
+
+
 def payload_is_running(payload: dict[str, Any], now: datetime | None = None) -> bool:
     competition = payload.get("competition") or {}
     start_at = parse_datetime_value(competition.get("startAt") or competition.get("start_at"))
@@ -472,7 +514,10 @@ class RankingUpdateService:
     ) -> Path:
         args = self.args
         output_dir = Path(args.output_dir)
-        contests = contests if contests is not None else load_contest_configs(args)
+        contests = enrich_contests_from_outputs(
+            contests if contests is not None else load_contest_configs(args),
+            output_dir,
+        )
         generated_at = generated_at or datetime.now().astimezone().isoformat(timespec="seconds")
         index_path = output_dir / "contests.json"
         write_json_payload(index_path, contest_index_payload(contests, generated_at))
@@ -487,7 +532,7 @@ class RankingUpdateService:
         fetched_at = now.isoformat(timespec="seconds")
         timestamp = now.strftime("%Y%m%d_%H%M%S")
         output_dir = Path(args.output_dir)
-        contests = load_contest_configs(args)
+        contests = enrich_contests_from_outputs(load_contest_configs(args), output_dir)
         skip_failed_contests = due_contest_ids is not None or not is_explicit_single_contest(args)
         self.publish_contest_index(contests, fetched_at)
         payloads: list[tuple[dict[str, Any], dict[str, Any]]] = []
@@ -508,16 +553,7 @@ class RankingUpdateService:
                     flush=True,
                 )
                 continue
-            contest["display_name"] = (
-                (payload.get("competition") or {}).get("name")
-                or contest.get("name")
-                or f'{contest["source"]} {contest["competition_id"]}'
-            )
-            competition = payload.get("competition") or {}
-            if competition.get("startAt"):
-                contest["start_at"] = competition["startAt"]
-            if competition.get("endAt"):
-                contest["end_at"] = competition["endAt"]
+            apply_payload_metadata_to_contest(contest, payload)
             payloads.append((contest, payload))
         self.publish_contest_index(contests, fetched_at)
 

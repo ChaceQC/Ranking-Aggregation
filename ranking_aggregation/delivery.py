@@ -167,22 +167,26 @@ def render_html(payload: dict[str, Any]) -> str:
       --muted: #687489;
       --accent: #0f6abf;
       --rank: #b42318;
+      --table-bottom-safe: 18px;
     }}
     * {{ box-sizing: border-box; }}
     body {{
       margin: 0;
-      min-height: 100vh;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
       background: var(--bg);
       color: var(--text);
       font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
     }}
     header {{
-      position: sticky;
-      top: 0;
+      flex: 0 0 auto;
       z-index: 5;
       padding: 14px 20px 12px;
       border-bottom: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.96);
+      background: #fff;
     }}
     h1 {{
       margin: 0 0 8px;
@@ -264,12 +268,19 @@ def render_html(payload: dict[str, Any]) -> str:
     .toolbar-status {{
       color: var(--muted);
     }}
-    main {{ padding: 16px 20px 24px; }}
+    main {{
+      flex: 1 1 auto;
+      min-height: 0;
+      padding: 16px 20px 24px;
+      overflow: hidden;
+    }}
     .table-wrap {{
+      height: 100%;
       overflow: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
       border: 1px solid var(--line);
       background: var(--panel);
-      max-height: calc(100vh - 190px);
     }}
     table {{
       width: max-content;
@@ -295,8 +306,9 @@ def render_html(payload: dict[str, Any]) -> str:
       color: #2e3a4d;
       font-weight: 700;
     }}
-    tbody tr:nth-child(even) {{ background: #fafcff; }}
-    tbody tr:hover {{ background: #eaf4ff; }}
+    tbody tr > td {{ background: #fff; }}
+    tbody tr:nth-child(even) > td {{ background: #fafcff; }}
+    tbody tr:hover > td {{ background: #eaf4ff; }}
     tbody tr.virtual-spacer,
     tbody tr.virtual-spacer:hover {{
       background: transparent;
@@ -306,6 +318,7 @@ def render_html(payload: dict[str, Any]) -> str:
       padding: 0;
       border: 0;
       line-height: 0;
+      background: transparent;
     }}
     tbody tr.virtual-spacer > td:first-child {{
       position: static;
@@ -329,7 +342,6 @@ def render_html(payload: dict[str, Any]) -> str:
       position: sticky;
       left: 0;
       z-index: 2;
-      background: inherit;
     }}
     th:first-child {{ z-index: 12; background: #eef3f9; }}
     .school-name, .team-name {{
@@ -365,19 +377,19 @@ def render_html(payload: dict[str, Any]) -> str:
       --intensity: max(0.18, calc(0.72 - min(var(--submits), 10) * 0.05));
     }}
     .problem-cell.accepted {{
-      background: rgba(22, 163, 74, var(--intensity));
+      background: var(--cell-bg);
       color: #063f24;
     }}
     .problem-cell.score-positive {{
-      background: rgba(22, 163, 74, var(--score-alpha, 0.42));
+      background: var(--cell-bg);
       color: #063f24;
     }}
     .problem-cell.rejected {{
-      background: rgba(220, 38, 38, var(--intensity));
+      background: var(--cell-bg);
       color: #5f1111;
     }}
     .problem-cell.sealed {{
-      background: rgba(37, 99, 235, var(--intensity));
+      background: var(--cell-bg);
       color: #102a60;
     }}
     .problem-cell.empty {{
@@ -461,6 +473,60 @@ def render_html(payload: dict[str, Any]) -> str:
       0%, 100% {{ box-shadow: inset 0 0 0 9999px rgba(255, 255, 255, 0); }}
       35% {{ box-shadow: inset 0 0 0 9999px rgba(250, 204, 21, 0.38); }}
       70% {{ box-shadow: inset 0 0 0 9999px rgba(14, 165, 233, 0.18); }}
+    }}
+    @media (max-width: 640px) {{
+      header {{
+        padding: 10px 10px 8px;
+      }}
+      h1 {{
+        margin-bottom: 6px;
+        font-size: 16px;
+        line-height: 1.28;
+      }}
+      .meta {{
+        gap: 4px 10px;
+        font-size: 11px;
+      }}
+      .toolbar {{
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        gap: 6px;
+        margin-top: 8px;
+        font-size: 12px;
+      }}
+      .search-box {{
+        grid-column: 1 / -1;
+        width: 100%;
+      }}
+      .team-type-select {{
+        min-width: 0;
+        width: 100%;
+      }}
+      .contest-select {{
+        grid-column: 1 / -1;
+        width: 100%;
+        max-width: none;
+        margin-left: 0;
+      }}
+      .auto-refresh,
+      .toolbar-status {{
+        grid-column: 1 / -1;
+      }}
+      main {{
+        padding: 8px;
+      }}
+      .table-wrap {{
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+      }}
+      table {{
+        font-size: 12px;
+      }}
+      th, td {{
+        padding: 7px 8px;
+      }}
+      :root {{
+        --table-bottom-safe: 64px;
+      }}
     }}
   </style>
 </head>
@@ -936,6 +1002,19 @@ def render_html(payload: dict[str, Any]) -> str:
         }}).join("");
       }}
 
+      function opaqueMixedColor(red, green, blue, amount) {{
+        amount = Math.max(0, Math.min(1, Number(amount || 0)));
+        var base = 255;
+        return "rgb("
+          + Math.round(base + (red - base) * amount) + ", "
+          + Math.round(base + (green - base) * amount) + ", "
+          + Math.round(base + (blue - base) * amount) + ")";
+      }}
+
+      function submitIntensity(submits) {{
+        return Math.max(0.18, 0.72 - Math.min(Number(submits || 0), 10) * 0.05);
+      }}
+
       function renderProblemCells(row, scoreMode) {{
         return problemEntries.map(function (entry) {{
           var label = entry[1] && entry[1].label || entry[0];
@@ -946,19 +1025,24 @@ def render_html(payload: dict[str, Any]) -> str:
           var cellStyle = "--submits:" + submits;
           if (cell.sealed) {{
             classes.push("sealed");
+            cellStyle += ";--cell-bg:" + opaqueMixedColor(37, 99, 235, submitIntensity(submits));
           }} else if (scoreCell && cell.submitted) {{
             var score = Number(cell.score || 0);
             var ratio = Number(cell.score_ratio || 0);
             if (score > 0) {{
+              var scoreAlpha = 0.24 + Math.max(0, Math.min(1, ratio)) * 0.5;
               classes.push(cell.accepted ? "accepted" : "score-positive");
-              cellStyle += ";--score-alpha:" + (0.24 + Math.max(0, Math.min(1, ratio)) * 0.5).toFixed(3);
+              cellStyle += ";--cell-bg:" + opaqueMixedColor(22, 163, 74, scoreAlpha);
             }} else {{
               classes.push("rejected");
+              cellStyle += ";--cell-bg:" + opaqueMixedColor(220, 38, 38, submitIntensity(submits));
             }}
           }} else if (cell.accepted) {{
             classes.push("accepted");
+            cellStyle += ";--cell-bg:" + opaqueMixedColor(22, 163, 74, submitIntensity(submits));
           }} else if (submits > 0) {{
             classes.push("rejected");
+            cellStyle += ";--cell-bg:" + opaqueMixedColor(220, 38, 38, submitIntensity(submits));
           }} else {{
             classes.push("empty");
           }}
@@ -1001,6 +1085,13 @@ def render_html(payload: dict[str, Any]) -> str:
       function spacerRow(height) {{
         return '<tr class="virtual-spacer"><td colspan="' + tableColumnCount
           + '" style="--spacer-height:' + Math.max(0, Math.round(height)) + 'px"></td></tr>';
+      }}
+
+      function tableBottomSafeHeight() {{
+        var value = window.getComputedStyle(document.documentElement)
+          .getPropertyValue("--table-bottom-safe");
+        var parsed = parseFloat(value);
+        return Number.isFinite(parsed) ? parsed : 0;
       }}
 
       function estimateRowHeight() {{
@@ -1046,7 +1137,7 @@ def render_html(payload: dict[str, Any]) -> str:
         for (var index = start; index < end; index += 1) {{
           html += renderRow(allRows[index], "");
         }}
-        html += spacerRow((allRows.length - end) * rowHeight);
+        html += spacerRow((allRows.length - end) * rowHeight + tableBottomSafeHeight());
         tbody.innerHTML = html;
         estimateRowHeight();
       }}
