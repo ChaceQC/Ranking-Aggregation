@@ -183,6 +183,7 @@ def render_html(payload: dict[str, Any]) -> str:
     }}
     header {{
       flex: 0 0 auto;
+      position: relative;
       z-index: 5;
       padding: 14px 20px 12px;
       border-bottom: 1px solid var(--line);
@@ -268,6 +269,54 @@ def render_html(payload: dict[str, Any]) -> str:
     .toolbar-status {{
       color: var(--muted);
     }}
+    .mobile-header-toggle {{
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 56px;
+      height: 22px;
+      margin: 10px auto -4px;
+      padding: 0;
+      border: 0;
+      border-radius: 11px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      touch-action: manipulation;
+    }}
+    .mobile-header-toggle:focus-visible {{
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }}
+    .mobile-header-toggle-line {{
+      position: relative;
+      width: 28px;
+      height: 10px;
+    }}
+    .mobile-header-toggle-line::before,
+    .mobile-header-toggle-line::after {{
+      content: "";
+      position: absolute;
+      top: 4px;
+      width: 15px;
+      height: 2px;
+      border-radius: 999px;
+      background: currentColor;
+      transition: transform 160ms ease, background-color 160ms ease;
+    }}
+    .mobile-header-toggle-line::before {{
+      left: 0;
+      transform: rotate(-24deg);
+      transform-origin: right center;
+    }}
+    .mobile-header-toggle-line::after {{
+      right: 0;
+      transform: rotate(24deg);
+      transform-origin: left center;
+    }}
+    .mobile-header-toggle:active {{
+      color: var(--accent);
+    }}
     main {{
       flex: 1 1 auto;
       min-height: 0;
@@ -352,6 +401,45 @@ def render_html(payload: dict[str, Any]) -> str:
     .rank {{
       color: var(--rank);
       font-weight: 700;
+    }}
+    .rank.medal-gold {{
+      color: #6f4b00;
+      background: #fff0a6;
+    }}
+    .rank.medal-silver {{
+      color: #344054;
+      background: #e4e9ef;
+    }}
+    .rank.medal-bronze {{
+      color: #543b1c;
+      background: #d9b978;
+    }}
+    tbody tr:hover > td.rank.medal-gold,
+    tbody tr.pinned-copy > td.rank.medal-gold,
+    tbody tr.pinned-original > td.rank.medal-gold {{
+      background: #f4d66a;
+    }}
+    tbody tr:hover > td.rank.medal-silver,
+    tbody tr.pinned-copy > td.rank.medal-silver,
+    tbody tr.pinned-original > td.rank.medal-silver {{
+      background: #cbd3dc;
+    }}
+    tbody tr:hover > td.rank.medal-bronze,
+    tbody tr.pinned-copy > td.rank.medal-bronze,
+    tbody tr.pinned-original > td.rank.medal-bronze {{
+      background: #c79b55;
+    }}
+    tbody tr.pinned-copy:hover > td.rank.medal-gold,
+    tbody tr.pinned-original:hover > td.rank.medal-gold {{
+      background: #e7bb32;
+    }}
+    tbody tr.pinned-copy:hover > td.rank.medal-silver,
+    tbody tr.pinned-original:hover > td.rank.medal-silver {{
+      background: #aeb9c6;
+    }}
+    tbody tr.pinned-copy:hover > td.rank.medal-bronze,
+    tbody tr.pinned-original:hover > td.rank.medal-bronze {{
+      background: #ad7c37;
     }}
     .team-name {{
       font-weight: 700;
@@ -512,6 +600,28 @@ def render_html(payload: dict[str, Any]) -> str:
       .toolbar-status {{
         grid-column: 1 / -1;
       }}
+      .mobile-header-toggle {{
+        display: flex;
+      }}
+      body.mobile-header-collapsed header {{
+        padding-top: 2px;
+        padding-bottom: 2px;
+      }}
+      body.mobile-header-collapsed header h1,
+      body.mobile-header-collapsed header .meta,
+      body.mobile-header-collapsed header .toolbar {{
+        display: none;
+      }}
+      body.mobile-header-collapsed .mobile-header-toggle {{
+        margin-top: 0;
+        margin-bottom: 0;
+      }}
+      body.mobile-header-collapsed .mobile-header-toggle-line::before {{
+        transform: rotate(24deg);
+      }}
+      body.mobile-header-collapsed .mobile-header-toggle-line::after {{
+        transform: rotate(-24deg);
+      }}
       main {{
         padding: 8px;
       }}
@@ -555,6 +665,9 @@ def render_html(payload: dict[str, Any]) -> str:
       </label>
       <span id="filterStatus" class="toolbar-status">置顶 0 / 0 支队伍</span>
     </div>
+    <button id="mobileHeaderToggle" class="mobile-header-toggle" type="button" aria-label="收起顶部展示栏" aria-expanded="true">
+      <span class="mobile-header-toggle-line" aria-hidden="true"></span>
+    </button>
   </header>
   <main>
     <div class="table-wrap">
@@ -578,6 +691,7 @@ def render_html(payload: dict[str, Any]) -> str:
       var refreshNow = document.getElementById("refreshNow");
       var contestSelect = document.getElementById("contestSelect");
       var autoRefresh = document.getElementById("autoRefresh");
+      var mobileHeaderToggle = document.getElementById("mobileHeaderToggle");
       var filterStatus = document.getElementById("filterStatus");
       var refreshStatus = document.getElementById("refreshStatus");
       var updateTimeNode = document.getElementById("updateTime");
@@ -601,6 +715,7 @@ def render_html(payload: dict[str, Any]) -> str:
       var pendingRenderFrame = null;
       var pendingFilterFrame = null;
       var pendingFilterTimer = null;
+      var headerLayoutTimer = null;
       var pinnedRowKeys = new Set();
       var pinnedItems = [];
       var changedTeamIds = new Set();
@@ -614,6 +729,7 @@ def render_html(payload: dict[str, Any]) -> str:
       var teamTypeKey = "pintia-ranking-team-type:" + location.pathname;
       var autoKey = "pintia-ranking-auto-refresh:" + location.pathname;
       var contestKey = "pintia-ranking-contest:" + location.pathname;
+      var headerCollapsedKey = "pintia-ranking-header-collapsed:" + location.pathname;
       var secondsLeft = refreshSeconds;
       var refreshInFlight = false;
       var refreshAbortController = null;
@@ -819,7 +935,7 @@ def render_html(payload: dict[str, Any]) -> str:
       }}
 
       function prepareRows(payload) {{
-        return (payload.rows || []).map(function (row, index) {{
+        var preparedRows = (payload.rows || []).map(function (row, index) {{
           var key = rowKey(row);
           return {{
             key: key,
@@ -828,6 +944,8 @@ def render_html(payload: dict[str, Any]) -> str:
             searchText: normalize((row.school_name || "") + " " + (row.team_name || ""))
           }};
         }});
+        assignMedals(payload, preparedRows);
+        return preparedRows;
       }}
 
       function currentContestOption() {{
@@ -861,6 +979,38 @@ def render_html(payload: dict[str, Any]) -> str:
         return Boolean(excluded);
       }}
 
+      function medalForPosition(position, total) {{
+        if (!Number.isFinite(position) || position <= 0 || total <= 0) {{
+          return "";
+        }}
+        var goldCount = Math.ceil(total * 0.1);
+        var silverCount = Math.ceil(total * 0.2);
+        var bronzeCount = Math.ceil(total * 0.3);
+        if (position <= goldCount) {{
+          return "gold";
+        }}
+        if (position <= goldCount + silverCount) {{
+          return "silver";
+        }}
+        if (position <= goldCount + silverCount + bronzeCount) {{
+          return "bronze";
+        }}
+        return "";
+      }}
+
+      function assignMedals(payload, rows) {{
+        var distinguishesTeamTypes = isTeamTypeFilterSupported(payload);
+        var eligibleRows = rows.filter(function (item) {{
+          return !distinguishesTeamTypes || !isUnofficialRow(item.row);
+        }});
+        var total = eligibleRows.length;
+        eligibleRows.forEach(function (item, index) {{
+          var rank = Number(item.row.rank);
+          var position = Number.isFinite(rank) && rank > 0 ? rank : index + 1;
+          item.medal = medalForPosition(position, total);
+        }});
+      }}
+
       function rowMatchesTeamType(row) {{
         if (!isTeamTypeFilterSupported(currentPayload)) {{
           return true;
@@ -892,7 +1042,8 @@ def render_html(payload: dict[str, Any]) -> str:
             index: index,
             sourceIndex: item.index,
             searchText: item.searchText,
-            displayNo: index + 1
+            displayNo: index + 1,
+            medal: item.medal
           }};
         }});
         if (resetScroll) {{
@@ -1055,6 +1206,23 @@ def render_html(payload: dict[str, Any]) -> str:
         }}).join("");
       }}
 
+      function renderRankCell(item) {{
+        var medal = item.medal || "";
+        var classes = ["rank"];
+        var labels = {{
+          gold: "金牌",
+          silver: "银牌",
+          bronze: "铜牌"
+        }};
+        if (medal) {{
+          classes.push("medal-" + medal);
+        }}
+        var title = medal ? ' title="' + labels[medal] + '"' : "";
+        return '<td class="' + classes.join(" ") + '"' + title + '>'
+          + escapeHtml(item.row.display_rank || item.row.rank)
+          + '</td>';
+      }}
+
       function renderRow(item, extraClass) {{
         var row = item.row;
         var classes = [];
@@ -1071,7 +1239,7 @@ def render_html(payload: dict[str, Any]) -> str:
         return '<tr' + classAttribute + ' data-team-fid="' + escapeHtml(item.key)
           + '" data-school="' + escapeHtml(row.school_name) + '" data-team="' + escapeHtml(row.team_name) + '">'
           + '<td class="number">' + escapeHtml(item.displayNo == null ? row.display_no : item.displayNo) + '</td>'
-          + '<td class="rank">' + escapeHtml(row.display_rank || row.rank) + '</td>'
+          + renderRankCell(item)
           + '<td class="school-name">' + escapeHtml(row.school_name) + '</td>'
           + '<td class="team-name"><span class="team-name-text" data-members="'
           + escapeHtml(row.members) + '">' + escapeHtml(row.team_name) + '</span></td>'
@@ -1285,6 +1453,33 @@ def render_html(payload: dict[str, Any]) -> str:
           : "自动刷新已暂停";
       }}
 
+      function refreshTableLayoutSoon() {{
+        if (headerLayoutTimer) {{
+          window.clearTimeout(headerLayoutTimer);
+        }}
+        headerLayoutTimer = window.setTimeout(function () {{
+          headerLayoutTimer = null;
+          memberPopover.hidden = true;
+          renderStart = -1;
+          renderEnd = -1;
+          renderPinnedRows();
+          renderVisibleRows(true);
+        }}, 180);
+      }}
+
+      function setMobileHeaderCollapsed(collapsed, skipLayoutRefresh) {{
+        collapsed = Boolean(collapsed);
+        document.body.classList.toggle("mobile-header-collapsed", collapsed);
+        mobileHeaderToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+        mobileHeaderToggle.setAttribute(
+          "aria-label",
+          collapsed ? "展开顶部展示栏" : "收起顶部展示栏"
+        );
+        if (!skipLayoutRefresh) {{
+          refreshTableLayoutSoon();
+        }}
+      }}
+
       try {{
         filterInput.value = localStorage.getItem(filterKey) || "";
         teamTypeFilter.value = localStorage.getItem(teamTypeKey) || "all";
@@ -1292,8 +1487,17 @@ def render_html(payload: dict[str, Any]) -> str:
           teamTypeFilter.value = "all";
         }}
         autoRefresh.checked = localStorage.getItem(autoKey) !== "0";
+        setMobileHeaderCollapsed(localStorage.getItem(headerCollapsedKey) === "1", true);
       }} catch (error) {{}}
 
+      mobileHeaderToggle.addEventListener("click", function () {{
+        var collapsed = !document.body.classList.contains("mobile-header-collapsed");
+        setMobileHeaderCollapsed(collapsed, false);
+        try {{
+          localStorage.setItem(headerCollapsedKey, collapsed ? "1" : "0");
+        }} catch (error) {{}}
+      }});
+      window.addEventListener("resize", refreshTableLayoutSoon);
       tableWrap.addEventListener("scroll", function () {{
         scheduleVisibleRows(false);
       }});
