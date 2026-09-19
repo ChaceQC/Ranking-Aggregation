@@ -745,7 +745,7 @@ def run_update_loop(
 
 
 class GzipStaticHandler(http.server.SimpleHTTPRequestHandler):
-    page_files = {"latest.html"}
+    page_files = {"latest.html", "favicon.ico"}
     contest_index_file = "contests.json"
     trusted_proxy_addresses = {"127.0.0.1", "::1"}
 

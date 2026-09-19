@@ -21,6 +21,10 @@ from .settings import (
     contest_json_name,
 )
 
+FAVICON_FILENAME = "favicon.ico"
+FAVICON_SOURCE_PATH = Path(__file__).resolve().parents[1] / "assets" / FAVICON_FILENAME
+
+
 def build_pintia_rankings_url(competition_id: str, team_excluded: str) -> str:
     query_filter = {"teamExcluded": team_excluded}
     query = urllib.parse.urlencode(
@@ -156,6 +160,7 @@ def render_html(payload: dict[str, Any]) -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
   <title>{html_escape(title)} - 榜单</title>
   <style>
     :root {{
@@ -444,7 +449,7 @@ def render_html(payload: dict[str, Any]) -> str:
     .team-name {{
       font-weight: 700;
     }}
-    .team-name-text {{
+    .team-name-text, .school-name-text {{
       display: inline-block;
       max-width: 100%;
       overflow: hidden;
@@ -944,7 +949,7 @@ def render_html(payload: dict[str, Any]) -> str:
             searchText: normalize((row.school_name || "") + " " + (row.team_name || ""))
           }};
         }});
-        assignMedals(payload, preparedRows);
+        assignMedals(preparedRows);
         return preparedRows;
       }}
 
@@ -979,6 +984,11 @@ def render_html(payload: dict[str, Any]) -> str:
         return Boolean(excluded);
       }}
 
+      function isEffectiveMedalRow(row) {{
+        var solvedCount = Number(row && row.solved_count);
+        return Number.isFinite(solvedCount) && solvedCount > 0;
+      }}
+
       function medalForPosition(position, total) {{
         if (!Number.isFinite(position) || position <= 0 || total <= 0) {{
           return "";
@@ -998,10 +1008,14 @@ def render_html(payload: dict[str, Any]) -> str:
         return "";
       }}
 
-      function assignMedals(payload, rows) {{
-        var distinguishesTeamTypes = isTeamTypeFilterSupported(payload);
-        var eligibleRows = rows.filter(function (item) {{
-          return !distinguishesTeamTypes || !isUnofficialRow(item.row);
+      function assignMedals(rows) {{
+        var officialRows = rows.filter(function (item) {{
+          return !isUnofficialRow(item.row);
+        }});
+        var distinguishesTeamTypes = officialRows.length !== rows.length;
+        var medalCandidateRows = distinguishesTeamTypes ? officialRows : rows;
+        var eligibleRows = medalCandidateRows.filter(function (item) {{
+          return isEffectiveMedalRow(item.row);
         }});
         var total = eligibleRows.length;
         eligibleRows.forEach(function (item, index) {{
@@ -1225,6 +1239,12 @@ def render_html(payload: dict[str, Any]) -> str:
 
       function renderRow(item, extraClass) {{
         var row = item.row;
+        var schoolRank = String(row.school_rank == null ? "" : row.school_rank).trim();
+        var schoolName = escapeHtml(row.school_name);
+        var schoolNameMarkup = schoolRank
+          ? '<span class="school-name-text" data-school-rank="'
+            + escapeHtml(schoolRank) + '">' + schoolName + '</span>'
+          : schoolName;
         var classes = [];
         if (extraClass) {{
           classes.push(extraClass);
@@ -1240,7 +1260,7 @@ def render_html(payload: dict[str, Any]) -> str:
           + '" data-school="' + escapeHtml(row.school_name) + '" data-team="' + escapeHtml(row.team_name) + '">'
           + '<td class="number">' + escapeHtml(item.displayNo == null ? row.display_no : item.displayNo) + '</td>'
           + renderRankCell(item)
-          + '<td class="school-name">' + escapeHtml(row.school_name) + '</td>'
+          + '<td class="school-name">' + schoolNameMarkup + '</td>'
           + '<td class="team-name"><span class="team-name-text" data-members="'
           + escapeHtml(row.members) + '">' + escapeHtml(row.team_name) + '</span></td>'
           + '<td class="solved">' + escapeHtml(currentScoreMode ? (row.total_score || "") : row.solved_count) + '</td>'
@@ -1432,6 +1452,28 @@ def render_html(payload: dict[str, Any]) -> str:
         positionMemberPopover(node);
       }}
 
+      function showSchoolPopover(node) {{
+        var schoolRank = node.dataset.schoolRank || "";
+        if (!schoolRank) {{
+          memberPopover.hidden = true;
+          return;
+        }}
+        memberPopover.innerHTML = '<div class="member-popover-title">'
+          + escapeHtml(node.textContent || "学校")
+          + '</div><div class="member-popover-members">校排：'
+          + escapeHtml(schoolRank)
+          + '</div>';
+        memberPopover.hidden = false;
+        positionMemberPopover(node);
+      }}
+
+      function hoverPopoverNode(target) {{
+        var node = target && target.closest
+          ? target.closest(".team-name-text, .school-name-text")
+          : null;
+        return node && tableWrap.contains(node) ? node : null;
+      }}
+
       function positionMemberPopover(anchor) {{
         var rect = anchor.getBoundingClientRect();
         var left = Math.min(rect.left, window.innerWidth - 300);
@@ -1502,26 +1544,24 @@ def render_html(payload: dict[str, Any]) -> str:
         scheduleVisibleRows(false);
       }});
       tableWrap.addEventListener("mouseover", function (event) {{
-        var node = event.target && event.target.closest
-          ? event.target.closest(".team-name-text")
-          : null;
-        if (node && tableWrap.contains(node)) {{
-          showMemberPopover(node);
+        var node = hoverPopoverNode(event.target);
+        if (node) {{
+          if (node.classList.contains("school-name-text")) {{
+            showSchoolPopover(node);
+          }} else {{
+            showMemberPopover(node);
+          }}
         }}
       }});
       tableWrap.addEventListener("mousemove", function (event) {{
-        var node = event.target && event.target.closest
-          ? event.target.closest(".team-name-text")
-          : null;
-        if (node && tableWrap.contains(node)) {{
+        var node = hoverPopoverNode(event.target);
+        if (node && !memberPopover.hidden) {{
           positionMemberPopover(node);
         }}
       }});
       tableWrap.addEventListener("mouseout", function (event) {{
-        var node = event.target && event.target.closest
-          ? event.target.closest(".team-name-text")
-          : null;
-        if (node && tableWrap.contains(node)) {{
+        var node = hoverPopoverNode(event.target);
+        if (node) {{
           memberPopover.hidden = true;
         }}
       }});
@@ -1747,6 +1787,12 @@ def atomic_write_bytes(path: Path, content: bytes) -> None:
     temp_path.replace(path)
 
 
+def ensure_favicon(output_dir: Path) -> None:
+    if not FAVICON_SOURCE_PATH.is_file():
+        raise FileNotFoundError(f"favicon source not found: {FAVICON_SOURCE_PATH}")
+    atomic_write_bytes(output_dir / FAVICON_FILENAME, FAVICON_SOURCE_PATH.read_bytes())
+
+
 def gzip_path(path: Path) -> Path:
     return path.with_name(f"{path.name}.gz")
 
@@ -1756,6 +1802,7 @@ def write_outputs(
     paths: OutputPaths,
     include_html: bool = True,
 ) -> None:
+    ensure_favicon(paths.latest_html.parent)
     problem_info = payload["problem_info"]
     rows = payload["rows"]
 
@@ -1787,6 +1834,7 @@ def write_outputs(
 
 
 def write_html_output(payload: dict[str, Any], path: Path) -> None:
+    ensure_favicon(path.parent)
     atomic_write_text(path, render_html(payload), encoding="utf-8")
 
 
