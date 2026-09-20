@@ -274,6 +274,9 @@ def render_html(payload: dict[str, Any]) -> str:
     .toolbar-status {{
       color: var(--muted);
     }}
+    .problem-summary {{
+      display: none;
+    }}
     .mobile-header-toggle {{
       display: none;
       align-items: center;
@@ -535,6 +538,10 @@ def render_html(payload: dict[str, Any]) -> str:
       color: #f8fafc;
       white-space: normal;
     }}
+    .mobile-detail-row,
+    .mobile-detail-row[hidden] {{
+      display: none;
+    }}
     .problem-header {{
       display: inline-flex;
       flex-direction: column;
@@ -605,6 +612,324 @@ def render_html(payload: dict[str, Any]) -> str:
       .toolbar-status {{
         grid-column: 1 / -1;
       }}
+      .problem-summary:not([hidden]) {{
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+        gap: 4px;
+        margin-top: 8px;
+        padding-top: 7px;
+        border-top: 1px solid var(--line);
+      }}
+      .problem-summary-items {{
+        display: contents;
+      }}
+      .problem-summary.is-collapsed {{
+        margin-top: 0;
+        padding-top: 0;
+        border-top: 0;
+      }}
+      .problem-summary.is-collapsed .problem-summary-items {{
+        display: none;
+      }}
+      .problem-summary-toggle {{
+        grid-column: -2 / -1;
+        justify-self: end;
+        align-self: end;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 26px;
+        padding: 0;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        touch-action: manipulation;
+      }}
+      .problem-summary-toggle:hover,
+      .problem-summary-toggle:active {{
+        background: #eaf4ff;
+        color: var(--accent);
+      }}
+      .problem-summary-toggle:focus-visible {{
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }}
+      .problem-summary-toggle .mobile-header-toggle-line {{
+        width: 14px;
+        height: 8px;
+      }}
+      .problem-summary-toggle .mobile-header-toggle-line::before,
+      .problem-summary-toggle .mobile-header-toggle-line::after {{
+        top: 3px;
+        width: 8px;
+        height: 1.5px;
+      }}
+      .problem-summary.is-collapsed .mobile-header-toggle-line::before {{
+        transform: rotate(24deg);
+      }}
+      .problem-summary.is-collapsed .mobile-header-toggle-line::after {{
+        transform: rotate(-24deg);
+      }}
+      .problem-summary-pill {{
+        min-width: 0;
+        height: 26px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        padding: 3px 4px;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        background: #fafcff;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+      }}
+      .problem-summary-label {{
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        color: var(--text);
+        font-weight: 800;
+      }}
+      .problem-summary-label i {{
+        width: 6px;
+        height: 6px;
+        flex: 0 0 auto;
+        border: 1px solid rgba(0, 0, 0, 0.18);
+        border-radius: 50%;
+      }}
+      .problem-summary-pill b {{
+        color: #067647;
+        font-weight: 800;
+      }}
+      .problem-summary-pill > span:last-child {{
+        color: var(--muted);
+      }}
+      .ranking-row {{
+        cursor: pointer;
+      }}
+      tbody tr.pinned-copy > td {{
+        position: sticky;
+        top: var(--sticky-row-top, 34px);
+        z-index: 6;
+        background: #fff7ed;
+        box-shadow: inset 0 -1px 0 var(--line);
+      }}
+      tbody tr.pinned-copy > td.rank-col {{
+        z-index: 9;
+      }}
+      .number-col,
+      .school-col,
+      .problem-col,
+      .penalty-col,
+      body.score-mode .solved-col {{
+        display: none;
+      }}
+      col.number-col,
+      col.school-col,
+      col.problem-col,
+      col.penalty-col,
+      body.score-mode col.solved-col {{
+        display: none;
+        width: 0 !important;
+      }}
+      table {{
+        width: 100%;
+        min-width: 0;
+        table-layout: fixed;
+      }}
+      col.rank-col {{ width: 14% !important; }}
+      col.team-col {{ width: 48% !important; }}
+      col.solved-col {{ width: 18% !important; }}
+      col.duration-col {{ width: 20% !important; }}
+      body.score-mode col.team-col {{ width: 44% !important; }}
+      body.score-mode col.score-col {{ width: 20% !important; }}
+      body.score-mode col.duration-col {{ width: 22% !important; }}
+      .mobile-detail-row:not([hidden]) {{
+        display: table-row;
+      }}
+      .mobile-detail-row > td {{
+        padding: 0;
+        border-right: 0;
+        background: #f8fafc;
+        text-align: left;
+      }}
+      #pinnedBody .mobile-detail-row > td {{
+        position: sticky;
+        top: var(--sticky-row-top);
+        z-index: 6;
+        background: #fff7ed;
+      }}
+      .mobile-detail-inner {{
+        overflow: visible;
+        padding: 8px 10px 10px;
+        border-left: 3px solid rgba(15, 106, 191, 0.22);
+      }}
+      .mobile-detail-row.is-opening .mobile-detail-inner {{
+        animation: mobile-detail-expand 180ms ease both;
+      }}
+      .mobile-detail-row.is-collapsing .mobile-detail-inner {{
+        animation: mobile-detail-collapse 160ms ease both;
+      }}
+      .mobile-school-line {{
+        display: flex;
+        align-items: baseline;
+        gap: 7px;
+        min-width: 0;
+      }}
+      .mobile-school-name {{
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: var(--text);
+        font-weight: 700;
+      }}
+      .mobile-school-rank {{
+        flex: 0 0 auto;
+        color: var(--muted);
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+      }}
+      .mobile-members-line {{
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.45;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }}
+      .mobile-problem-grid {{
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+        gap: 4px;
+        margin-top: 7px;
+      }}
+      .mobile-problem {{
+        position: relative;
+        min-width: 0;
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        grid-template-rows: auto auto;
+        align-items: center;
+        gap: 1px 4px;
+        padding: 4px 5px;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        background: #fff;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }}
+      .mobile-problem.accepted,
+      .mobile-problem.score-positive,
+      .mobile-problem.rejected,
+      .mobile-problem.sealed {{
+        background: var(--cell-bg);
+      }}
+      .mobile-problem.accepted,
+      .mobile-problem.score-positive {{
+        color: #063f24;
+      }}
+      .mobile-problem.rejected {{
+        color: #5f1111;
+      }}
+      .mobile-problem.sealed {{
+        color: #102a60;
+      }}
+      .mobile-problem-label {{
+        grid-row: 1 / span 2;
+        font-weight: 800;
+      }}
+      .mobile-problem-value {{
+        min-width: 0;
+        overflow: visible;
+        text-align: right;
+        white-space: nowrap;
+        font-size: 12px;
+        font-weight: 700;
+      }}
+      .team-col.team-name,
+      .team-col .team-name-text {{
+        overflow: visible;
+        text-overflow: clip;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        vertical-align: top;
+      }}
+      .team-col.team-name {{
+        position: relative;
+        padding-right: 22px;
+      }}
+      tbody tr.pinned-copy > td.team-col.team-name {{
+        position: sticky;
+        top: var(--sticky-row-top, 34px);
+      }}
+      .team-col.team-name::after {{
+        content: "";
+        position: absolute;
+        top: 50%;
+        right: 8px;
+        width: 6px;
+        height: 6px;
+        border-right: 1.5px solid var(--muted);
+        border-bottom: 1.5px solid var(--muted);
+        transform: translateY(-70%) rotate(45deg);
+        transition: transform 160ms ease, border-color 160ms ease;
+      }}
+      .ranking-row[aria-expanded="true"] .team-col.team-name::after {{
+        border-color: var(--accent);
+        transform: translateY(-25%) rotate(225deg);
+      }}
+      .mobile-school-name {{
+        overflow: visible;
+        text-overflow: clip;
+        white-space: normal;
+        overflow-wrap: anywhere;
+      }}
+      .mobile-problem.first-accept::before {{
+        content: "";
+        position: absolute;
+        left: -1px;
+        top: -1px;
+        width: 0;
+        height: 0;
+        border-top: 9px solid #f59e0b;
+        border-right: 9px solid transparent;
+      }}
+      .mobile-problem.first-accept::after {{
+        content: "★";
+        position: absolute;
+        left: 0;
+        top: -1px;
+        color: #fff;
+        font-size: 6px;
+        line-height: 8px;
+      }}
+      @keyframes mobile-detail-expand {{
+        from {{
+          opacity: 0;
+          transform: translateY(-5px);
+        }}
+        to {{
+          opacity: 1;
+          transform: translateY(0);
+        }}
+      }}
+      @keyframes mobile-detail-collapse {{
+        from {{
+          opacity: 1;
+          transform: translateY(0);
+        }}
+        to {{
+          opacity: 0;
+          transform: translateY(-5px);
+        }}
+      }}
       .mobile-header-toggle {{
         display: flex;
       }}
@@ -621,16 +946,23 @@ def render_html(payload: dict[str, Any]) -> str:
         margin-top: 0;
         margin-bottom: 0;
       }}
-      body.mobile-header-collapsed .mobile-header-toggle-line::before {{
+      body.mobile-header-collapsed header .mobile-header-toggle-line::before {{
         transform: rotate(24deg);
       }}
-      body.mobile-header-collapsed .mobile-header-toggle-line::after {{
+      body.mobile-header-collapsed header .mobile-header-toggle-line::after {{
         transform: rotate(-24deg);
       }}
       main {{
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
         padding: 8px;
       }}
       .table-wrap {{
+        flex: 1 1 auto;
+        min-height: 0;
+        height: auto;
+        overflow-anchor: none;
         padding-bottom: env(safe-area-inset-bottom, 0px);
       }}
       table {{
@@ -675,6 +1007,12 @@ def render_html(payload: dict[str, Any]) -> str:
     </button>
   </header>
   <main>
+    <div id="problemSummary" class="problem-summary" hidden aria-label="各题总答题情况">
+      <div id="problemSummaryItems" class="problem-summary-items"></div>
+      <button id="problemSummaryToggle" class="problem-summary-toggle" type="button" aria-label="收起题目统计" title="收起题目统计" aria-expanded="true" aria-controls="problemSummaryItems">
+        <span class="mobile-header-toggle-line" aria-hidden="true"></span>
+      </button>
+    </div>
     <div class="table-wrap">
       <table>
         <colgroup id="tableColumns"></colgroup>
@@ -698,6 +1036,9 @@ def render_html(payload: dict[str, Any]) -> str:
       var autoRefresh = document.getElementById("autoRefresh");
       var mobileHeaderToggle = document.getElementById("mobileHeaderToggle");
       var filterStatus = document.getElementById("filterStatus");
+      var problemSummary = document.getElementById("problemSummary");
+      var problemSummaryItems = document.getElementById("problemSummaryItems");
+      var problemSummaryToggle = document.getElementById("problemSummaryToggle");
       var refreshStatus = document.getElementById("refreshStatus");
       var updateTimeNode = document.getElementById("updateTime");
       var contestClockNode = document.getElementById("contestClock");
@@ -713,6 +1054,7 @@ def render_html(payload: dict[str, Any]) -> str:
       var allRows = [];
       var problemEntries = [];
       var tableColumnCount = 7;
+      var tableColumnClasses = [];
       var rowHeight = 35;
       var currentScoreMode = false;
       var renderStart = -1;
@@ -723,6 +1065,20 @@ def render_html(payload: dict[str, Any]) -> str:
       var headerLayoutTimer = null;
       var pinnedRowKeys = new Set();
       var pinnedItems = [];
+      var expandedMobileRowKey = "";
+      var collapsingMobileRowKey = "";
+      var openingMobileRowKey = "";
+      var mobileDetailRowHeight = 0;
+      var mobileDetailGroup = "main";
+      var mobileDetailNode = null;
+      var mobileCollapseTimer = null;
+      var mobileRowHeights = new Map();
+      var mobileOffsets = [0];
+      var mobileLayoutWidth = 0;
+      var mobilePinnedHeight = 0;
+      var mobileContentVersion = 0;
+      var mobileTopSpacer = null;
+      var mobileBottomSpacer = null;
       var changedTeamIds = new Set();
       var currentPayload = JSON.parse(document.getElementById("initialPayload").textContent);
       var refreshSeconds = Math.max(
@@ -735,6 +1091,7 @@ def render_html(payload: dict[str, Any]) -> str:
       var autoKey = "pintia-ranking-auto-refresh:" + location.pathname;
       var contestKey = "pintia-ranking-contest:" + location.pathname;
       var headerCollapsedKey = "pintia-ranking-header-collapsed:" + location.pathname;
+      var summaryCollapsedKey = "pintia-ranking-summary-collapsed:" + location.pathname;
       var secondsLeft = refreshSeconds;
       var refreshInFlight = false;
       var refreshAbortController = null;
@@ -885,6 +1242,29 @@ def render_html(payload: dict[str, Any]) -> str:
           return item.id === contestId;
         }});
         return (selected && selected.json) || "latest.json";
+      }}
+
+      function isMobileLayout() {{
+        return Boolean(window.matchMedia && window.matchMedia("(max-width: 640px)").matches);
+      }}
+
+      function renderProblemSummary() {{
+        if (!problemSummary) {{
+          return;
+        }}
+        problemSummaryItems.innerHTML = problemEntries.map(function (entry) {{
+          var info = entry[1] || {{}};
+          var label = info.label || entry[0];
+          var acceptCount = Number(info.acceptCount || 0);
+          var submitCount = Number(info.submitCount || 0);
+          return '<span class="problem-summary-pill">'
+            + '<span class="problem-summary-label"><i style="background:'
+            + escapeHtml(info.balloonRgb || "#999") + '"></i>' + escapeHtml(label) + '</span>'
+            + '<b>' + escapeHtml(acceptCount) + '</b>'
+            + '<span>/</span><span>' + escapeHtml(submitCount) + '</span>'
+            + '</span>';
+        }}).join("");
+        problemSummary.hidden = problemEntries.length === 0;
       }}
 
       function renderContestSelect() {{
@@ -1047,6 +1427,7 @@ def render_html(payload: dict[str, Any]) -> str:
       }}
 
       function applyTeamTypeFilter(resetScroll) {{
+        mobileContentVersion += 1;
         allRows = sourceRows.filter(function (item) {{
           return rowMatchesTeamType(item.row);
         }}).map(function (item, index) {{
@@ -1071,26 +1452,44 @@ def render_html(payload: dict[str, Any]) -> str:
       }}
 
       function renderTableHeader(scoreMode) {{
-        var baseLabels = scoreMode
-          ? ["序号", "排名", "学校", "队名", "总分", "满分题", "用时"]
-          : ["序号", "排名", "学校", "队名", "过题数", "总用时", "罚时"];
-        var baseHeaders = baseLabels.map(function (label) {{
-          return {{ html: escapeHtml(label) }};
+        var baseHeaders = (scoreMode
+          ? [
+              {{ label: "序号", className: "number-col" }},
+              {{ label: "排名", className: "rank-col" }},
+              {{ label: "学校", className: "school-col" }},
+              {{ label: "队名", className: "team-col" }},
+              {{ label: "总分", className: "score-col" }},
+              {{ label: "满分题", className: "solved-col" }},
+              {{ label: "用时", className: "duration-col" }}
+            ]
+          : [
+              {{ label: "序号", className: "number-col" }},
+              {{ label: "排名", className: "rank-col" }},
+              {{ label: "学校", className: "school-col" }},
+              {{ label: "队名", className: "team-col" }},
+              {{ label: "过题数", className: "solved-col" }},
+              {{ label: "总用时", className: "duration-col" }},
+              {{ label: "罚时", className: "penalty-col" }}
+            ]
+        ).map(function (header) {{
+          return {{ html: escapeHtml(header.label), className: header.className }};
         }});
         var problemHeaders = problemEntries.map(function (entry) {{
           var info = entry[1] || {{}};
           var label = info.label || entry[0];
           var fullScore = info.fullScore == null || info.fullScore === "" ? "" : " / " + escapeHtml(info.fullScore);
-          return {{ html: '<span class="problem-header">'
+          return {{ className: "problem-col", html: '<span class="problem-header">'
             + '<span class="problem-header-label"><i style="background:' + escapeHtml(info.balloonRgb || "#999") + '"></i>'
             + escapeHtml(label) + '</span>'
             + '<span class="problem-header-count">' + escapeHtml(info.acceptCount || 0)
             + (scoreMode ? fullScore : ' / ' + escapeHtml(info.submitCount || 0)) + '</span>'
             + '</span>' }};
         }});
-        tableColumnCount = baseHeaders.length + problemHeaders.length;
-        tableHeader.innerHTML = baseHeaders.concat(problemHeaders).map(function (header) {{
-          return "<th>" + header.html + "</th>";
+        var headers = baseHeaders.concat(problemHeaders);
+        tableColumnCount = headers.length;
+        tableColumnClasses = headers.map(function (header) {{ return header.className; }});
+        tableHeader.innerHTML = headers.map(function (header) {{
+          return '<th class="' + header.className + '">' + header.html + "</th>";
         }}).join("");
       }}
 
@@ -1162,8 +1561,9 @@ def render_html(payload: dict[str, Any]) -> str:
       }}
 
       function applyColumnWidths() {{
-        tableColumns.innerHTML = computeColumnWidths().map(function (width) {{
-          return '<col style="width:' + width + 'px">';
+        tableColumns.innerHTML = computeColumnWidths().map(function (width, index) {{
+          return '<col class="' + (tableColumnClasses[index] || "")
+            + '" style="width:' + width + 'px">';
         }}).join("");
       }}
 
@@ -1180,56 +1580,89 @@ def render_html(payload: dict[str, Any]) -> str:
         return Math.max(0.18, 0.72 - Math.min(Number(submits || 0), 10) * 0.05);
       }}
 
-      function renderProblemCells(row, scoreMode) {{
-        return problemEntries.map(function (entry) {{
-          var label = entry[1] && entry[1].label || entry[0];
-          var cell = (row.problem_cells || {{}})[label] || {{}};
-          var submits = Number(cell.submit_count || 0);
-          var classes = ["problem-cell"];
-          var scoreCell = Boolean(cell.score_mode || scoreMode);
-          var cellStyle = "--submits:" + submits;
-          if (cell.sealed) {{
-            classes.push("sealed");
-            cellStyle += ";--cell-bg:" + opaqueMixedColor(37, 99, 235, submitIntensity(submits));
-          }} else if (scoreCell && cell.submitted) {{
-            var score = Number(cell.score || 0);
-            var ratio = Number(cell.score_ratio || 0);
-            if (score > 0) {{
-              var scoreAlpha = 0.24 + Math.max(0, Math.min(1, ratio)) * 0.5;
-              classes.push(cell.accepted ? "accepted" : "score-positive");
-              cellStyle += ";--cell-bg:" + opaqueMixedColor(22, 163, 74, scoreAlpha);
-            }} else {{
-              classes.push("rejected");
-              cellStyle += ";--cell-bg:" + opaqueMixedColor(220, 38, 38, submitIntensity(submits));
-            }}
-          }} else if (cell.accepted) {{
-            classes.push("accepted");
-            cellStyle += ";--cell-bg:" + opaqueMixedColor(22, 163, 74, submitIntensity(submits));
-          }} else if (submits > 0) {{
+      function problemPresentation(row, entry, scoreMode) {{
+        var label = entry[1] && entry[1].label || entry[0];
+        var cell = (row.problem_cells || {{}})[label] || {{}};
+        var submits = Number(cell.submit_count || 0);
+        var classes = [];
+        var scoreCell = Boolean(cell.score_mode || scoreMode);
+        var cellStyle = "--submits:" + submits;
+        if (cell.sealed) {{
+          classes.push("sealed");
+          cellStyle += ";--cell-bg:" + opaqueMixedColor(37, 99, 235, submitIntensity(submits));
+        }} else if (scoreCell && cell.submitted) {{
+          var score = Number(cell.score || 0);
+          var ratio = Number(cell.score_ratio || 0);
+          if (score > 0) {{
+            var scoreAlpha = 0.24 + Math.max(0, Math.min(1, ratio)) * 0.5;
+            classes.push(cell.accepted ? "accepted" : "score-positive");
+            cellStyle += ";--cell-bg:" + opaqueMixedColor(22, 163, 74, scoreAlpha);
+          }} else {{
             classes.push("rejected");
             cellStyle += ";--cell-bg:" + opaqueMixedColor(220, 38, 38, submitIntensity(submits));
-          }} else {{
-            classes.push("empty");
           }}
-          if (cell.first_accept) {{
-            classes.push("first-accept");
-          }}
-          return '<td class="' + classes.join(" ") + '" style="' + cellStyle + '">'
-            + escapeHtml(cell.text || row[label] || "")
+        }} else if (cell.accepted) {{
+          classes.push("accepted");
+          cellStyle += ";--cell-bg:" + opaqueMixedColor(22, 163, 74, submitIntensity(submits));
+        }} else if (submits > 0) {{
+          classes.push("rejected");
+          cellStyle += ";--cell-bg:" + opaqueMixedColor(220, 38, 38, submitIntensity(submits));
+        }} else {{
+          classes.push("empty");
+        }}
+        if (cell.first_accept) {{
+          classes.push("first-accept");
+        }}
+        return {{
+          label: label,
+          text: cell.text || row[label] || "",
+          submits: submits,
+          classes: classes,
+          style: cellStyle
+        }};
+      }}
+
+      function renderProblemCells(row, scoreMode) {{
+        if (isMobileLayout()) {{
+          return problemEntries.map(function () {{
+            return '<td class="problem-col"></td>';
+          }}).join("");
+        }}
+        return problemEntries.map(function (entry) {{
+          var presentation = problemPresentation(row, entry, scoreMode);
+          return '<td class="' + ["problem-cell", "problem-col"].concat(presentation.classes).join(" ")
+            + '" style="' + presentation.style + '">'
+            + escapeHtml(presentation.text)
             + '</td>';
+        }}).join("");
+      }}
+
+      function renderMobileProblemCells(row, scoreMode) {{
+        return problemEntries.map(function (entry) {{
+          var presentation = problemPresentation(row, entry, scoreMode);
+          return '<div class="' + ["mobile-problem"].concat(presentation.classes).join(" ")
+          + '" style="' + presentation.style + '">'
+          + '<span class="mobile-problem-label">' + escapeHtml(presentation.label) + '</span>'
+          + '<span class="mobile-problem-value">' + escapeHtml(presentation.text || "--") + '</span>'
+            + '</div>';
         }}).join("");
       }}
 
       function renderRankCell(item) {{
         var medal = item.medal || "";
-        var classes = ["rank"];
+        var classes = ["rank", "rank-col"];
         var labels = {{
           gold: "金牌",
           silver: "银牌",
           bronze: "铜牌"
         }};
+        var rank = Number(item.row.display_rank || item.row.rank);
+        var podium = {{ 1: "gold", 2: "silver", 3: "bronze" }}[rank];
         if (medal) {{
           classes.push("medal-" + medal);
+        }}
+        if (podium) {{
+          classes.push("podium-" + podium);
         }}
         var title = medal ? ' title="' + labels[medal] + '"' : "";
         return '<td class="' + classes.join(" ") + '"' + title + '>'
@@ -1245,7 +1678,7 @@ def render_html(payload: dict[str, Any]) -> str:
           ? '<span class="school-name-text" data-school-rank="'
             + escapeHtml(schoolRank) + '">' + schoolName + '</span>'
           : schoolName;
-        var classes = [];
+        var classes = ["ranking-row"];
         if (extraClass) {{
           classes.push(extraClass);
         }}
@@ -1256,18 +1689,55 @@ def render_html(payload: dict[str, Any]) -> str:
           classes.push("changed-row");
         }}
         var classAttribute = classes.length ? ' class="' + classes.join(" ") + '"' : "";
+        var expanded = isMobileLayout() && expandedMobileRowKey === item.key
+          && mobileDetailGroup === (extraClass === "pinned-copy" ? "pinned" : "main");
+        var rowInteraction = isMobileLayout()
+          ? ' tabindex="0" aria-expanded="' + (expanded ? "true" : "false") + '"'
+          : "";
+        var primaryClass = currentScoreMode ? "score-col solved" : "solved-col solved";
+        var secondaryClass = currentScoreMode ? "solved-col time" : "duration-col time";
+        var tertiaryClass = currentScoreMode ? "duration-col time" : "penalty-col time";
         return '<tr' + classAttribute + ' data-team-fid="' + escapeHtml(item.key)
-          + '" data-school="' + escapeHtml(row.school_name) + '" data-team="' + escapeHtml(row.team_name) + '">'
-          + '<td class="number">' + escapeHtml(item.displayNo == null ? row.display_no : item.displayNo) + '</td>'
+          + '" data-school="' + escapeHtml(row.school_name) + '" data-team="' + escapeHtml(row.team_name) + '"'
+          + rowInteraction + '>'
+          + '<td class="number-col number">' + escapeHtml(item.displayNo == null ? row.display_no : item.displayNo) + '</td>'
           + renderRankCell(item)
-          + '<td class="school-name">' + schoolNameMarkup + '</td>'
-          + '<td class="team-name"><span class="team-name-text" data-members="'
+          + '<td class="school-col school-name">' + schoolNameMarkup + '</td>'
+          + '<td class="team-col team-name"><span class="team-name-text" data-members="'
           + escapeHtml(row.members) + '">' + escapeHtml(row.team_name) + '</span></td>'
-          + '<td class="solved">' + escapeHtml(currentScoreMode ? (row.total_score || "") : row.solved_count) + '</td>'
-          + '<td class="time">' + escapeHtml(currentScoreMode ? row.solved_count : row.solving_time) + '</td>'
-          + '<td class="time">' + escapeHtml(currentScoreMode ? row.solving_time : row.penalty_time) + '</td>'
+          + '<td class="' + primaryClass + '">' + escapeHtml(currentScoreMode ? (row.total_score || "") : row.solved_count) + '</td>'
+          + '<td class="' + secondaryClass + '">' + escapeHtml(currentScoreMode ? row.solved_count : row.solving_time) + '</td>'
+          + '<td class="' + tertiaryClass + '">' + escapeHtml(currentScoreMode ? row.solving_time : row.penalty_time) + '</td>'
           + renderProblemCells(row, currentScoreMode)
           + '</tr>';
+      }}
+
+      function renderMobileDetailRow(item) {{
+        var row = item.row;
+        var schoolRank = String(row.school_rank == null ? "" : row.school_rank).trim();
+        var members = String(row.members == null ? "" : row.members).trim();
+        var schoolRankMarkup = schoolRank
+          ? '<span class="mobile-school-rank">校排 ' + escapeHtml(schoolRank) + '</span>'
+          : "";
+        var membersMarkup = members
+          ? '<div class="mobile-members-line">' + escapeHtml(members) + '</div>'
+          : "";
+        var collapsing = collapsingMobileRowKey === item.key;
+        var opening = !collapsing && openingMobileRowKey === item.key;
+        var stateClass = collapsing
+          ? " is-collapsing"
+          : (opening ? " is-opening" : "");
+        return '<tr class="mobile-detail-row' + stateClass + '" data-detail-for="'
+          + escapeHtml(item.key) + '">'
+          + '<td colspan="' + tableColumnCount + '">'
+          + '<div class="mobile-detail-inner">'
+          + '<div class="mobile-school-line"><span class="mobile-school-name">'
+          + escapeHtml(row.school_name) + '</span>' + schoolRankMarkup + '</div>'
+          + membersMarkup
+          + '<div class="mobile-problem-grid">'
+          + renderMobileProblemCells(row, currentScoreMode)
+          + '</div>'
+          + '</div></td></tr>';
       }}
 
       function spacerRow(height) {{
@@ -1293,7 +1763,250 @@ def render_html(payload: dict[str, Any]) -> str:
         }}
       }}
 
+      function mobileNodeFromHtml(html) {{
+        var template = document.createElement("template");
+        template.innerHTML = html;
+        return template.content.firstElementChild;
+      }}
+
+      function mobileExistingRows(parent) {{
+        var rows = new Map();
+        parent.querySelectorAll("tr.ranking-row").forEach(function (row) {{
+          rows.set(row.dataset.teamFid, row);
+        }});
+        return rows;
+      }}
+
+      function mobileRowNode(item, group, existing) {{
+        var node = existing.get(item.key);
+        if (!node || node.mobileContentVersion !== mobileContentVersion) {{
+          node = mobileNodeFromHtml(renderRow(item, group === "pinned" ? "pinned-copy" : ""));
+          node.mobileContentVersion = mobileContentVersion;
+        }}
+        node.classList.toggle("pinned-original", group === "main" && pinnedRowKeys.has(item.key));
+        node.classList.toggle("changed-row", changedTeamIds.has(item.key));
+        var expanded = String(expandedMobileRowKey === item.key && mobileDetailGroup === group);
+        if (node.getAttribute("aria-expanded") !== expanded) {{
+          node.setAttribute("aria-expanded", expanded);
+        }}
+        return node;
+      }}
+
+      function mobileDetailFor(item) {{
+        if (!mobileDetailNode || mobileDetailNode.mobileContentVersion !== mobileContentVersion) {{
+          mobileDetailNode = mobileNodeFromHtml(renderMobileDetailRow(item));
+          mobileDetailNode.mobileContentVersion = mobileContentVersion;
+        }}
+        return mobileDetailNode;
+      }}
+
+      function reconcileMobileRows(parent, nodes) {{
+        var wanted = new Set(nodes);
+        Array.from(parent.children).forEach(function (node) {{
+          if (!wanted.has(node)) {{
+            if (node === mobileDetailNode) {{
+              node.classList.remove("is-opening");
+            }}
+            node.remove();
+          }}
+        }});
+        var cursor = parent.firstElementChild;
+        nodes.forEach(function (node) {{
+          if (node === cursor) {{
+            cursor = cursor.nextElementSibling;
+          }} else {{
+            parent.insertBefore(node, cursor);
+          }}
+        }});
+      }}
+
+      function clearMobileDetail() {{
+        window.clearTimeout(mobileCollapseTimer);
+        mobileCollapseTimer = null;
+        if (mobileDetailNode) {{
+          mobileDetailNode.remove();
+        }}
+        mobileDetailNode = null;
+        mobileDetailRowHeight = 0;
+        expandedMobileRowKey = "";
+        collapsingMobileRowKey = "";
+        openingMobileRowKey = "";
+      }}
+
+      function validateMobileDetail() {{
+        var key = expandedMobileRowKey || collapsingMobileRowKey;
+        if (key && (!allRows.some(function (item) {{ return item.key === key; }})
+          || (mobileDetailGroup === "pinned" && !pinnedRowKeys.has(key)))) {{
+          clearMobileDetail();
+        }}
+      }}
+
+      function captureMobileAnchor(preferred) {{
+        if (!isMobileLayout()) {{
+          return null;
+        }}
+        var boundary = tableWrap.getBoundingClientRect().top + tableWrap.clientTop
+          + tableHeader.getBoundingClientRect().height + mobilePinnedHeight;
+        var node = preferred || Array.from(tbody.children).find(function (row) {{
+          return !row.classList.contains("virtual-spacer") && row.getBoundingClientRect().bottom > boundary;
+        }});
+        if (!node || node.parentElement !== tbody) {{
+          return null;
+        }}
+        return {{
+          key: node.dataset.teamFid || node.dataset.detailFor,
+          detail: node.classList.contains("mobile-detail-row"),
+          top: node.getBoundingClientRect().top
+        }};
+      }}
+
+      function restoreMobileAnchor(anchor) {{
+        if (!anchor) {{
+          return;
+        }}
+        var node = Array.from(tbody.children).find(function (row) {{
+          return (anchor.detail ? row.dataset.detailFor : row.dataset.teamFid) === anchor.key;
+        }});
+        if (node) {{
+          var delta = node.getBoundingClientRect().top - anchor.top;
+          if (Math.abs(delta) > 0.5) {{
+            tableWrap.scrollTop += delta;
+          }}
+        }}
+      }}
+
+      function updateMobileOffsets() {{
+        var detailKey = expandedMobileRowKey || collapsingMobileRowKey;
+        mobileOffsets = [0];
+        allRows.forEach(function (item, index) {{
+          var height = mobileRowHeights.get(item.key) || 32;
+          if (mobileDetailGroup === "main" && item.key === detailKey) {{
+            height += mobileDetailRowHeight;
+          }}
+          mobileOffsets.push(mobileOffsets[index] + height);
+        }});
+      }}
+
+      function updateMobileSpacers() {{
+        if (!mobileTopSpacer || !mobileTopSpacer.isConnected || renderStart < 0) {{
+          return;
+        }}
+        mobileTopSpacer.firstElementChild.style.setProperty("--spacer-height", mobileOffsets[renderStart] + "px");
+        mobileBottomSpacer.firstElementChild.style.setProperty("--spacer-height",
+          (mobileOffsets[allRows.length] - mobileOffsets[renderEnd] + tableBottomSafeHeight()) + "px");
+      }}
+
+      function updateMobileExpandedRows() {{
+        [pinnedBody, tbody].forEach(function (parent) {{
+          var group = parent === pinnedBody ? "pinned" : "main";
+          parent.querySelectorAll("tr.ranking-row").forEach(function (node) {{
+            var expanded = String(node.dataset.teamFid === expandedMobileRowKey && group === mobileDetailGroup);
+            if (node.getAttribute("aria-expanded") !== expanded) {{
+              node.setAttribute("aria-expanded", expanded);
+            }}
+          }});
+        }});
+      }}
+
+      function mobileRowAtOffset(offset) {{
+        var low = 0;
+        var high = allRows.length;
+        while (low < high) {{
+          var middle = Math.floor((low + high) / 2);
+          if (mobileOffsets[middle + 1] <= offset) {{
+            low = middle + 1;
+          }} else {{
+            high = middle;
+          }}
+        }}
+        return low;
+      }}
+
+      function updateMobilePinnedOffsets() {{
+        var headerHeight = tableHeader.getBoundingClientRect().height;
+        var top = headerHeight;
+        var rows = Array.from(pinnedBody.children).map(function (node) {{
+          return {{ node: node, height: node.getBoundingClientRect().height }};
+        }});
+        rows.forEach(function (item) {{
+          var node = item.node;
+          node.style.setProperty("--sticky-row-top", top + "px");
+          top += item.height;
+          if (node === mobileDetailNode) {{
+            mobileDetailRowHeight = item.height;
+          }}
+        }});
+        mobilePinnedHeight = top - headerHeight;
+      }}
+
+      function renderMobilePinnedRows() {{
+        var existing = mobileExistingRows(pinnedBody);
+        var nodes = [];
+        var detailKey = expandedMobileRowKey || collapsingMobileRowKey;
+        pinnedItems.forEach(function (item) {{
+          nodes.push(mobileRowNode(item, "pinned", existing));
+          if (mobileDetailGroup === "pinned" && item.key === detailKey) {{
+            nodes.push(mobileDetailFor(item));
+          }}
+        }});
+        reconcileMobileRows(pinnedBody, nodes);
+        updateMobilePinnedOffsets();
+      }}
+
+      function renderMobileVisibleRows() {{
+        var anchor = captureMobileAnchor();
+        var width = tableWrap.clientWidth;
+        if (width !== mobileLayoutWidth) {{
+          mobileLayoutWidth = width;
+          mobileRowHeights.clear();
+          updateMobilePinnedOffsets();
+          if (mobileDetailNode && mobileDetailNode.isConnected) {{
+            mobileDetailRowHeight = mobileDetailNode.getBoundingClientRect().height;
+          }}
+        }}
+        updateMobileOffsets();
+        var viewportHeight = Math.max(0, tableWrap.clientHeight
+          - tableHeader.getBoundingClientRect().height - mobilePinnedHeight);
+        var start = Math.max(0, mobileRowAtOffset(tableWrap.scrollTop) - 12);
+        var end = Math.min(allRows.length, mobileRowAtOffset(tableWrap.scrollTop + viewportHeight) + 13);
+        var existing = mobileExistingRows(tbody);
+        if (!mobileTopSpacer) {{
+          mobileTopSpacer = mobileNodeFromHtml(spacerRow(0));
+          mobileBottomSpacer = mobileNodeFromHtml(spacerRow(0));
+        }}
+        mobileTopSpacer.firstElementChild.colSpan = tableColumnCount;
+        mobileBottomSpacer.firstElementChild.colSpan = tableColumnCount;
+        var nodes = [mobileTopSpacer];
+        var detailKey = expandedMobileRowKey || collapsingMobileRowKey;
+        for (var index = start; index < end; index += 1) {{
+          var item = allRows[index];
+          nodes.push(mobileRowNode(item, "main", existing));
+          if (mobileDetailGroup === "main" && item.key === detailKey) {{
+            nodes.push(mobileDetailFor(item));
+          }}
+        }}
+        nodes.push(mobileBottomSpacer);
+        reconcileMobileRows(tbody, nodes);
+        // Cache individual heights so wrapped names and details retain their space offscreen.
+        nodes.forEach(function (node) {{
+          if (node.classList.contains("ranking-row")) {{
+            mobileRowHeights.set(node.dataset.teamFid, node.getBoundingClientRect().height);
+          }} else if (node === mobileDetailNode) {{
+            mobileDetailRowHeight = node.getBoundingClientRect().height;
+          }}
+        }});
+        updateMobileOffsets();
+        renderStart = start;
+        renderEnd = end;
+        updateMobileSpacers();
+        restoreMobileAnchor(anchor);
+      }}
+
       function renderPinnedRows() {{
+        if (isMobileLayout()) {{
+          renderMobilePinnedRows();
+          return;
+        }}
         var headerHeight = tableHeader.getBoundingClientRect().height || rowHeight;
         pinnedBody.innerHTML = pinnedItems.map(function (item, index) {{
           return renderRow(item, "pinned-copy").replace(
@@ -1304,6 +2017,10 @@ def render_html(payload: dict[str, Any]) -> str:
       }}
 
       function renderVisibleRows(force) {{
+        if (isMobileLayout()) {{
+          renderMobileVisibleRows();
+          return;
+        }}
         if (!allRows.length) {{
           tbody.innerHTML = "";
           renderStart = 0;
@@ -1343,6 +2060,7 @@ def render_html(payload: dict[str, Any]) -> str:
       function renderTable(payload, changed) {{
         problemEntries = sortedProblems(payload.problem_info || {{}});
         currentScoreMode = Boolean(payload.score_mode || (payload.competition || {{}}).scoreMode);
+        document.body.classList.toggle("score-mode", currentScoreMode);
         changedTeamIds = changed || new Set();
         sourceRows = prepareRows(payload);
         allRows = sourceRows.slice();
@@ -1352,6 +2070,7 @@ def render_html(payload: dict[str, Any]) -> str:
         pinnedItems = [];
         pinnedRowKeys = new Set();
         updateTeamTypeFilterVisibility(payload);
+        renderProblemSummary();
         renderTableHeader(currentScoreMode);
         applyTeamTypeFilter(false);
         window.setTimeout(function () {{
@@ -1372,6 +2091,10 @@ def render_html(payload: dict[str, Any]) -> str:
           }});
         }}
         previousRowSignatures = newSignatures;
+        if (payload.competition_id !== currentPayload.competition_id || payload.source !== currentPayload.source) {{
+          clearMobileDetail();
+          mobileRowHeights.clear();
+        }}
         currentPayload = payload;
         refreshSeconds = Math.max(
           1,
@@ -1391,6 +2114,7 @@ def render_html(payload: dict[str, Any]) -> str:
         if (!keywords.length) {{
           pinnedItems = [];
           pinnedRowKeys = new Set();
+          validateMobileDetail();
           renderPinnedRows();
           renderVisibleRows(true);
           filterStatus.textContent = "置顶 0 / " + allRows.length + " 支队伍";
@@ -1416,6 +2140,7 @@ def render_html(payload: dict[str, Any]) -> str:
         pinnedRowKeys = new Set(pinnedItems.map(function (item) {{
           return item.key;
         }}));
+        validateMobileDetail();
         renderPinnedRows();
         renderVisibleRows(true);
         filterStatus.textContent = "置顶 " + pinnedItems.length + " / " + allRows.length
@@ -1468,6 +2193,9 @@ def render_html(payload: dict[str, Any]) -> str:
       }}
 
       function hoverPopoverNode(target) {{
+        if (isMobileLayout()) {{
+          return null;
+        }}
         var node = target && target.closest
           ? target.closest(".team-name-text, .school-name-text")
           : null;
@@ -1522,6 +2250,17 @@ def render_html(payload: dict[str, Any]) -> str:
         }}
       }}
 
+      function setProblemSummaryCollapsed(collapsed, skipLayoutRefresh) {{
+        problemSummary.classList.toggle("is-collapsed", Boolean(collapsed));
+        problemSummaryToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+        var label = collapsed ? "展开题目统计" : "收起题目统计";
+        problemSummaryToggle.setAttribute("aria-label", label);
+        problemSummaryToggle.title = label;
+        if (!skipLayoutRefresh) {{
+          refreshTableLayoutSoon();
+        }}
+      }}
+
       try {{
         filterInput.value = localStorage.getItem(filterKey) || "";
         teamTypeFilter.value = localStorage.getItem(teamTypeKey) || "all";
@@ -1530,6 +2269,7 @@ def render_html(payload: dict[str, Any]) -> str:
         }}
         autoRefresh.checked = localStorage.getItem(autoKey) !== "0";
         setMobileHeaderCollapsed(localStorage.getItem(headerCollapsedKey) === "1", true);
+        setProblemSummaryCollapsed(localStorage.getItem(summaryCollapsedKey) === "1", true);
       }} catch (error) {{}}
 
       mobileHeaderToggle.addEventListener("click", function () {{
@@ -1539,7 +2279,109 @@ def render_html(payload: dict[str, Any]) -> str:
           localStorage.setItem(headerCollapsedKey, collapsed ? "1" : "0");
         }} catch (error) {{}}
       }});
+      problemSummaryToggle.addEventListener("click", function () {{
+        var collapsed = !problemSummary.classList.contains("is-collapsed");
+        setProblemSummaryCollapsed(collapsed, false);
+        try {{
+          localStorage.setItem(summaryCollapsedKey, collapsed ? "1" : "0");
+        }} catch (error) {{}}
+      }});
       window.addEventListener("resize", refreshTableLayoutSoon);
+      function finishMobileCollapse() {{
+        if (!collapsingMobileRowKey) {{
+          return;
+        }}
+        var anchor = mobileDetailGroup === "main" ? captureMobileAnchor() : null;
+        clearMobileDetail();
+        updateMobileExpandedRows();
+        updateMobilePinnedOffsets();
+        updateMobileOffsets();
+        updateMobileSpacers();
+        restoreMobileAnchor(anchor);
+      }}
+
+      function toggleMobileRow(row) {{
+        if (!isMobileLayout()) {{
+          return;
+        }}
+        var key = row.getAttribute("data-team-fid");
+        if (!key) {{
+          return;
+        }}
+        var group = row.parentElement === pinnedBody ? "pinned" : "main";
+        var anchor = group === "main" ? captureMobileAnchor(row) : null;
+        if (expandedMobileRowKey === key && mobileDetailGroup === group) {{
+          expandedMobileRowKey = "";
+          collapsingMobileRowKey = key;
+          row.setAttribute("aria-expanded", "false");
+          if (mobileDetailNode) {{
+            mobileDetailNode.classList.remove("is-opening");
+            mobileDetailNode.classList.add("is-collapsing");
+          }}
+          mobileCollapseTimer = window.setTimeout(finishMobileCollapse, 180);
+          return;
+        }}
+        if (collapsingMobileRowKey === key && mobileDetailGroup === group) {{
+          window.clearTimeout(mobileCollapseTimer);
+          mobileCollapseTimer = null;
+          collapsingMobileRowKey = "";
+          expandedMobileRowKey = key;
+          mobileDetailNode.classList.remove("is-collapsing");
+          mobileDetailNode.classList.add("is-opening");
+        }} else {{
+          clearMobileDetail();
+          mobileDetailGroup = group;
+          expandedMobileRowKey = key;
+          openingMobileRowKey = key;
+        }}
+        memberPopover.hidden = true;
+        var item = allRows.find(function (candidate) {{ return candidate.key === key; }});
+        if (!item) {{
+          clearMobileDetail();
+          return;
+        }}
+        var detail = mobileDetailFor(item);
+        row.after(detail);
+        updateMobileExpandedRows();
+        mobileDetailRowHeight = detail.getBoundingClientRect().height;
+        updateMobilePinnedOffsets();
+        updateMobileOffsets();
+        updateMobileSpacers();
+        restoreMobileAnchor(anchor);
+        openingMobileRowKey = "";
+      }}
+      tableWrap.addEventListener("click", function (event) {{
+        var target = event.target;
+        var row = target && target.closest ? target.closest("tr.ranking-row") : null;
+        if (row && tableWrap.contains(row)) {{
+          toggleMobileRow(row);
+        }}
+      }});
+      tableWrap.addEventListener("keydown", function (event) {{
+        if (event.key !== "Enter" && event.key !== " ") {{
+          return;
+        }}
+        var target = event.target;
+        var row = target && target.closest ? target.closest("tr.ranking-row") : null;
+        if (row && tableWrap.contains(row)) {{
+          event.preventDefault();
+          toggleMobileRow(row);
+        }}
+      }});
+      tableWrap.addEventListener("animationend", function (event) {{
+        var detailRow = event.target && event.target.closest
+          ? event.target.closest("tr.mobile-detail-row")
+          : null;
+        if (!detailRow) {{
+          return;
+        }}
+        if (event.animationName === "mobile-detail-expand") {{
+          detailRow.classList.remove("is-opening");
+        }}
+        if (event.animationName === "mobile-detail-collapse" && detailRow === mobileDetailNode) {{
+          finishMobileCollapse();
+        }}
+      }});
       tableWrap.addEventListener("scroll", function () {{
         scheduleVisibleRows(false);
       }});
